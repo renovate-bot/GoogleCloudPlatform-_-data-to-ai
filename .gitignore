@@ -51,3 +51,4 @@ crash.*.log
 
 # Language Specific
 # ...
+/infrastructure/terraform/.terraform.lock.hcl

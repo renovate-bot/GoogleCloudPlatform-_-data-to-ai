@@ -1,0 +1,39 @@
+[
+  {
+    "mode": "REQUIRED",
+    "name": "report_id",
+    "type": "STRING",
+    "defaultValueExpression": "GENERATE_UUID()"
+  },
+  {
+    "mode": "REQUIRED",
+    "name": "uri",
+    "type": "STRING"
+  },
+  {
+    "mode": "REQUIRED",
+    "name": "image_created",
+    "type": "TIMESTAMP"
+  },
+  {
+    "mode": "REQUIRED",
+    "name": "bus_stop_id",
+    "type": "STRING"
+  },
+  {
+    "mode": "REQUIRED",
+    "name": "cleanliness_level",
+    "type": "INT64"
+  },
+  {
+    "mode": "REQUIRED",
+    "name": "description",
+    "type": "STRING"
+  },
+  {
+    "mode": "REQUIRED",
+    "name": "created_ts",
+    "type": "TIMESTAMP",
+    "defaultValueExpression": "CURRENT_TIMESTAMP()"
+  }
+]
