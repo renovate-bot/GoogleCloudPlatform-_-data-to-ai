@@ -41,6 +41,7 @@ resource "google_bigquery_table_iam_member" "data_processor_sa_bigquery_editor" 
   dataset_id = google_bigquery_dataset.bus-stop-image-processing.dataset_id
   for_each = tomap({
     "reports" = google_bigquery_table.reports.id,
+    "process_watermark" = google_bigquery_table.process_watermark.id,
   })
   table_id = each.value
 }

@@ -1,7 +1,7 @@
 [
   {
     "mode": "REQUIRED",
-    "name": "report_id",
+    "name": "process_time",
     "type": "TIMESTAMP"
   }
 ]
