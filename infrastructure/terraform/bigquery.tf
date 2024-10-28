@@ -93,6 +93,15 @@ resource "google_bigquery_job" "populate_process_watermark" {
   location = var.bigquery_dataset_location
 }
 
+resource "google_bigquery_table" "incidents" {
+  deletion_protection = false
+  dataset_id          = local.dataset_id
+  table_id            = "incidents"
+  description         = "Incidents generated based on the attributes of the processed images"
+  clustering          = ["bus_stop_id"]
+  schema              = file("${path.module}/bigquery-schema/incidents.json")
+}
+
 locals {
   default_model_name = "default_model"
   pro_model_name = "pro_model"
