@@ -25,10 +25,20 @@ resource "google_bigquery_connection" "image_bucket_connection" {
   cloud_resource {}
 }
 
-resource "google_project_iam_member" "image_bucket_connection_permission" {
-  project = var.project_id
+locals {
+  connection_sa = format("serviceAccount:%s", google_bigquery_connection.image_bucket_connection.cloud_resource[0].service_account_id)
+}
+
+resource "google_storage_bucket_iam_member" "connection_sa_bucket_viewer" {
+  bucket = google_storage_bucket.image_bucket.name
   role    = "roles/storage.objectViewer"
-  member  = format("serviceAccount:%s", google_bigquery_connection.image_bucket_connection.cloud_resource[0].service_account_id)
+  member  = local.connection_sa
+}
+
+resource "google_project_iam_member" "connection_sa_vertex_ai_user" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = local.connection_sa
 }
 
 resource "google_bigquery_table" "images" {
@@ -75,9 +85,52 @@ resource "google_bigquery_job" "populate_process_watermark" {
   depends_on = [google_bigquery_table.process_watermark]
 
   query {
+#  TODO: change to MERGE statement to keep only a single record in the table
     query = "INSERT INTO ${google_bigquery_table.process_watermark.table_id} VALUES (CURRENT_TIMESTAMP())"
   }
 }
+
+locals {
+  default_model_name = "default_model"
+  pro_model_name = "pro_model"
+}
+
+resource "google_bigquery_job" "create_default_model" {
+  depends_on = [google_project_iam_member.connection_sa_vertex_ai_user]
+  job_id     = "create_default_model"
+
+  location = var.bigquery_dataset_location
+
+  query {
+    query = <<END_OF_STATEMENT
+CREATE OR REPLACE MODEL `${var.project_id}.${google_bigquery_dataset.bus-stop-image-processing.dataset_id}.${local.default_model_name}`
+  REMOTE WITH CONNECTION `${google_bigquery_connection.image_bucket_connection.id}`
+  OPTIONS(ENDPOINT = 'gemini-1.5-flash');
+END_OF_STATEMENT
+
+    create_disposition = ""
+    write_disposition = ""
+  }
+}
+
+resource "google_bigquery_job" "create_pro_model" {
+  depends_on = [google_project_iam_member.connection_sa_vertex_ai_user]
+  job_id     = "create_pro_model"
+
+  location = var.bigquery_dataset_location
+
+  query {
+    query = <<END_OF_STATEMENT
+CREATE OR REPLACE MODEL `${var.project_id}.${google_bigquery_dataset.bus-stop-image-processing.dataset_id}.${local.pro_model_name}`
+  REMOTE WITH CONNECTION `${google_bigquery_connection.image_bucket_connection.id}`
+  OPTIONS(ENDPOINT = 'gemini-1.5-pro');
+END_OF_STATEMENT
+
+    create_disposition = ""
+    write_disposition = ""
+  }
+}
+
 
 #resource "google_bigquery_routine" "process_images_procedure" {
 #dataset_id = google_bigquery_dataset.bus-stop-image-processing.dataset_id
