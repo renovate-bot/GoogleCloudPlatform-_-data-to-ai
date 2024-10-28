@@ -171,7 +171,7 @@ Return your answer in JSON format as follows. Do not include JSON decorators.
     "cleanliness_level": Integer, # Rate the cleanliness of this bus stop (From 0="Extremely dirty" to 10="Extremely clean"). Focus on littering and broken items.
     "description": String, # Details about what you see in the image in terms of cleanliness
     "number_of_people": Integer, # Number of people at the bus stop
-    "is_a_bus_stop": Boolean, # Does it look like a bus stop
+    "is_bus_stop": boolean, # Does it look like a bus stop
 }
    ''' AS PROMPT,
    0.2 AS temperature,
