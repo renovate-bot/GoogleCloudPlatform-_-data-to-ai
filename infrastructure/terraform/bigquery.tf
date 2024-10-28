@@ -93,6 +93,27 @@ resource "google_bigquery_job" "populate_process_watermark" {
   location = var.bigquery_dataset_location
 }
 
+resource "google_bigquery_table" "report_watermark" {
+  deletion_protection = false
+  dataset_id          = local.dataset_id
+  table_id            = "report_watermark"
+  description         = "Table with a single row which contains the timestamp the report data was last processed."
+  schema              = file("${path.module}/bigquery-schema/report_watermark.json")
+}
+
+resource "google_bigquery_job" "populate_report_watermark" {
+  job_id     = "set_initial_report_watermark"
+  depends_on = [google_bigquery_table.report_watermark]
+
+  query {
+    query = "INSERT INTO ${local.dataset_id}.${google_bigquery_table.report_watermark.table_id} VALUES (TIMESTAMP('2000-01-01 00:00:00+00'))"
+    create_disposition = ""
+    write_disposition = ""
+  }
+  location = var.bigquery_dataset_location
+}
+
+
 resource "google_bigquery_table" "incidents" {
   deletion_protection = false
   dataset_id          = local.dataset_id

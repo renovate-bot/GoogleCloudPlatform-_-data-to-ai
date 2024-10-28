@@ -42,6 +42,7 @@ resource "google_bigquery_table_iam_member" "data_processor_sa_bigquery_editor" 
   for_each = tomap({
     "reports" = google_bigquery_table.reports.id,
     "process_watermark" = google_bigquery_table.process_watermark.id,
+    "report_watermark" = google_bigquery_table.report_watermark.id,
     "incidents" = google_bigquery_table.incidents.id,
   })
   table_id = each.value
