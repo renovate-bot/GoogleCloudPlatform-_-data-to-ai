@@ -1,0 +1,7 @@
+[
+  {
+    "mode": "REQUIRED",
+    "name": "report_id",
+    "type": "TIMESTAMP"
+  }
+]

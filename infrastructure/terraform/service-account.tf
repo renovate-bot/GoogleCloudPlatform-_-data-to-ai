@@ -27,6 +27,14 @@ resource "google_project_iam_member" "data_processor_sa_bigquery_job_user" {
   role    = "roles/bigquery.jobUser"
 }
 
+resource "google_bigquery_connection_iam_member" "data_processor_sa_connection_access" {
+  project       = var.project_id
+  location      = var.bigquery_dataset_location
+  connection_id = google_bigquery_connection.image_bucket_connection.connection_id
+  role          = "roles/bigquery.connectionUser"
+  member        = local.member_data_processor_sa
+}
+
 resource "google_bigquery_table_iam_member" "data_processor_sa_bigquery_editor" {
   member = local.member_data_processor_sa
   role   = "roles/bigquery.dataEditor"
