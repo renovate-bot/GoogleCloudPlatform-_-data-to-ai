@@ -217,3 +217,74 @@ WHERE TRUE;
 COMMIT TRANSACTION;
 END_OF_PROCEDURE
 }
+
+resource "google_bigquery_routine" "update_incidents_procedure" {
+  dataset_id = local.dataset_id
+  routine_id = "update_incidents"
+  routine_type = "PROCEDURE"
+  language = "SQL"
+  definition_body = <<END_OF_PROCEDURE
+DECLARE last_process_time TIMESTAMP;
+DECLARE new_process_time TIMESTAMP;
+
+BEGIN TRANSACTION;
+SET last_process_time = (SELECT MAX(process_time) FROM ${local.dataset_id}.${google_bigquery_table.report_watermark.table_id});
+SET new_process_time = CURRENT_TIMESTAMP();
+
+-- Main MERGE statement to update or insert incidents based on new reports
+MERGE ${local.dataset_id}.${google_bigquery_table.incidents.table_id} AS target
+USING (
+  -- CTE to get the latest report for each bus stop
+  WITH latest_reports AS (
+    SELECT
+      *,
+      -- Assign row numbers to reports for each bus stop, ordered by update time descending
+      ROW_NUMBER() OVER (PARTITION BY bus_stop_id ORDER BY image_created DESC) AS report_number
+    FROM ${local.dataset_id}.${google_bigquery_table.reports.table_id}
+    WHERE image_created > last_process_time
+  )
+  -- Main subquery to prepare data for MERGE operation
+  SELECT
+    lr.bus_stop_id,
+    -- Determine if an incident should be resolved based on cleanliness threshold
+    CASE
+      WHEN lr.cleanliness_level >= 6 THEN TRUE
+      ELSE FALSE
+    END AS should_resolve,
+    i.incident_id,
+    lr.report_id,
+    i.open_report_id
+  FROM latest_reports lr
+  -- Left join to find existing open incidents for each bus stop
+  LEFT JOIN ${local.dataset_id}.${google_bigquery_table.incidents.table_id} i
+    ON lr.bus_stop_id = i.bus_stop_id
+    AND i.status = "OPEN"
+  -- Only consider the most recent report for each bus stop
+  WHERE lr.report_number = 1
+) AS source
+ON target.incident_id = source.incident_id
+
+-- Update existing incidents: mark as resolved if cleanliness has improved
+WHEN MATCHED AND source.should_resolve THEN
+  UPDATE SET
+    status = "RESOLVED",
+    resolve_report_id = source.report_id
+
+-- Insert new incidents: create for stops with low cleanliness and no open incident
+WHEN NOT MATCHED AND NOT source.should_resolve THEN
+  INSERT (incident_id, bus_stop_id, status, open_report_id)
+  VALUES (GENERATE_UUID(), source.bus_stop_id, "OPEN", source.report_id)
+
+-- Update existing incidents: set open_report_id if it's missing
+WHEN MATCHED AND NOT source.should_resolve AND target.open_report_id IS NULL THEN
+  UPDATE SET
+    open_report_id = source.report_id;
+
+-- Update the process time watermark
+UPDATE ${local.dataset_id}.${google_bigquery_table.report_watermark.table_id}
+SET process_time = new_process_time
+WHERE TRUE;
+
+COMMIT TRANSACTION;
+END_OF_PROCEDURE
+}

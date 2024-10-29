@@ -21,7 +21,7 @@
     "type": "STRING"
   },
   {
-    "mode": "REQUIRED",
+    "mode": "NULLABLE",
     "name": "resolve_report_id",
     "type": "STRING"
   }
