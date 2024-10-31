@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# A single service account is used to both schedule processing and actually execute queries
+# In many production environments two separate service accounts would be used. In this demo
+# we are only using a single account.
 resource "google_service_account" "data_processor_sa" {
   account_id   = "data-processor-sa"
   display_name = "Service Account to process incoming images"
@@ -46,4 +49,11 @@ resource "google_bigquery_table_iam_member" "data_processor_sa_bigquery_editor" 
     "incidents" = google_bigquery_table.incidents.id,
   })
   table_id = each.value
+}
+
+# required in order to give access to the the stored procedures
+resource "google_bigquery_dataset_iam_member" "data_processor_sa_bigquery_data_viewer" {
+  member = local.member_data_processor_sa
+  role   = "roles/bigquery.dataViewer"
+  dataset_id = google_bigquery_dataset.bus-stop-image-processing.dataset_id
 }

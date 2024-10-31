@@ -1,0 +1,54 @@
+// Copyright 2024 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+const {BigQuery} = require('@google-cloud/bigquery');
+const bigquery = new BigQuery();
+
+const functions = require('@google-cloud/functions-framework');
+
+/**
+ * HTTP Cloud Function that invokes bus stop image processing.
+ *
+ * @param {Object} req Cloud Function request context.
+ * @param {Object} res Cloud Function response context.
+ */
+functions.http('invoke-image-processing', async (req, res) => {
+  const sqlQuery =
+    'CALL `${project_id}.${dataset_id}.process_images`();' + '\n' +
+    'CALL `${project_id}.${dataset_id}.update_incidents`();';
+
+  const job = {
+    configuration: {
+      query: {
+        query: sqlQuery,
+        useLegacySql: false,
+      },
+    },
+    jobReference: {
+      projectId: '${project_id}',
+      // TODO: for some reason the job id defined here is not used
+      jobId: 'process-images-' + new Date().getTime(),
+      location: '${bigquery_location}'
+    }
+  };
+
+  try {
+    const response = await bigquery.createJob(job);
+    const jobId = response[0];
+    res.status(200).send("Started BigQuery job: " + jobId);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send(`Error starting BigQuery job: $${err}`);
+  }
+});

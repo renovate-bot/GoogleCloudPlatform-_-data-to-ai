@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#resource "google_project_service" "vertex-ai-api" {
-#  service = "vertex-ai.googleapis.com"
-#}
+resource "google_project_service" "run_api" {
+  service = "run.googleapis.com"
+}

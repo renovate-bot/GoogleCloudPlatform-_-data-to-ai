@@ -14,15 +14,20 @@
 
 variable "project_id" {
   description = "Project where all the resources will be created"
-  type = string
+  type        = string
 }
 variable "region" {
   description = "Region where the resources will be created"
-  default = "us-central1"
-  type = string
+  default     = "us-central1"
+  type        = string
 }
 variable "bigquery_dataset_location" {
   description = "BigQuery region where the datasets will be created"
-  default = "us-central1"
-  type = string
+  default     = "us-central1"
+  type        = string
+}
+variable "processing_schedule" {
+  description = "Schedule of running image processing jobs"
+  default = "*/3 * * * *"
+  type    = string
 }
