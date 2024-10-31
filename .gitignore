@@ -56,3 +56,4 @@ crash.*.log
 /infrastructure/functions/image-process-invoker/node_modules/
 /infrastructure/functions/image-process-invoker/image-process-invoker.zip
 /infrastructure/functions/image-process-invoker/index.js
+/.cloud-env.sh

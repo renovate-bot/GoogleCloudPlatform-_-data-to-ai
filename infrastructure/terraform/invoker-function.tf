@@ -28,6 +28,8 @@ resource "google_storage_bucket_object" "staged_image_process_invoker" {
   source = data.archive_file.invoker_function_archive.output_path
 }
 
+# TODO: find out why the function doesn't get re-created if the source code changes.
+# At the moment the function needs to be manually deleted in order to be updated.
 resource "google_cloudfunctions2_function" "processing_invoker" {
   depends_on = [
     google_storage_bucket_object.staged_image_process_invoker, google_project_service.run_api

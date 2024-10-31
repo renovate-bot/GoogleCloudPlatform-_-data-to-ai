@@ -27,3 +27,7 @@ output "bq-dataset" {
 output "data-processor-sa" {
   value = google_service_account.data_processor_sa.email
 }
+
+output "image-bucket" {
+  value = google_storage_bucket.image_bucket.id
+}
