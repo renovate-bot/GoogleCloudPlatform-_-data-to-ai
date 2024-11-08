@@ -32,7 +32,11 @@ resource "google_storage_bucket_object" "staged_image_process_invoker" {
 # At the moment the function needs to be manually deleted in order to be updated.
 resource "google_cloudfunctions2_function" "processing_invoker" {
   depends_on = [
-    google_storage_bucket_object.staged_image_process_invoker, google_project_service.run_api
+    google_storage_bucket_object.staged_image_process_invoker,
+    google_project_service.run_api,
+    google_project_service.functions_api,
+    google_project_service.cloudbuild_api,
+    google_project_service.cloudscheduler,
   ]
   name     = "image-processing-invoker"
   project  = var.project_id

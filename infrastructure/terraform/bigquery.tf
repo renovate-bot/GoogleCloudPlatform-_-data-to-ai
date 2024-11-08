@@ -131,7 +131,6 @@ locals {
 resource "google_bigquery_job" "create_default_model" {
   depends_on = [google_project_iam_member.connection_sa_vertex_ai_user]
   job_id     = "create_default_model"
-
   location = var.bigquery_dataset_location
 
   query {
@@ -149,7 +148,6 @@ END_OF_STATEMENT
 resource "google_bigquery_job" "create_pro_model" {
   depends_on = [google_project_iam_member.connection_sa_vertex_ai_user]
   job_id     = "create_pro_model"
-
   location = var.bigquery_dataset_location
 
   query {
@@ -165,11 +163,12 @@ END_OF_STATEMENT
 }
 
 resource "google_bigquery_routine" "process_images_procedure" {
-dataset_id = local.dataset_id
-routine_id = "process_images"
-routine_type = "PROCEDURE"
-language = "SQL"
-definition_body = <<END_OF_PROCEDURE
+  dataset_id = local.dataset_id
+  routine_id = "process_images"
+  routine_type = "PROCEDURE"
+  language = "SQL"
+  depends_on = [google_bigquery_job.create_default_model]
+  definition_body = <<END_OF_PROCEDURE
 DECLARE last_process_time TIMESTAMP;
 DECLARE new_process_time TIMESTAMP;
 
@@ -191,8 +190,8 @@ SELECT
   CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.number_of_people') AS INT64) AS number_of_people,
 FROM
   ML.GENERATE_TEXT(
-   MODEL `${var.project_id}`.${local.dataset_id}.${local.default_model_name},
-   TABLE `${var.project_id}`.${local.dataset_id}.${google_bigquery_table.images.table_id},
+   MODEL `${var.project_id}.${local.dataset_id}.${local.default_model_name}`,
+   TABLE `${var.project_id}.${local.dataset_id}.${google_bigquery_table.images.table_id}`,
    STRUCT (
    '''
 Analyze this image of a bus stop and provide the details below.
@@ -210,7 +209,7 @@ Return your answer in JSON format as follows. Do not include JSON decorators.
 WHERE content_type = "image/jpeg" AND updated > last_process_time;
 
 -- Update the process time watermark
-UPDATE `${var.project_id}`.${local.dataset_id}.${google_bigquery_table.process_watermark.table_id}
+UPDATE `${var.project_id}.${local.dataset_id}.${google_bigquery_table.process_watermark.table_id}`
 SET process_time = new_process_time
 WHERE TRUE;
 
