@@ -117,7 +117,6 @@ resource "google_bigquery_job" "populate_report_watermark" {
   location = var.bigquery_dataset_location
 }
 
-
 resource "google_bigquery_table" "incidents" {
   deletion_protection = false
   dataset_id          = local.dataset_id
@@ -127,16 +126,25 @@ resource "google_bigquery_table" "incidents" {
   schema              = file("${path.module}/bigquery-schema/incidents.json")
 }
 
+resource "random_id" "job_id_suffix" {
+  byte_length = 8
+  lifecycle {
+    prevent_destroy = true  # Prevents the random ID from being regenerated on destroy
+  }
+}
+
 locals {
   default_model_name = "default_model"
   pro_model_name = "pro_model"
 }
 
 resource "google_bigquery_job" "create_default_model" {
-  depends_on = [google_project_iam_member.connection_sa_vertex_ai_user]
-  job_id     = "create_default_model"
+  job_id     = "create_default_model_${random_id.job_id_suffix.hex}" 
   location = var.bigquery_dataset_location
-
+  depends_on = [
+    google_project_service.vertex_ai_api,
+    google_project_iam_member.connection_sa_vertex_ai_user
+  ]
   query {
     query = <<END_OF_STATEMENT
 CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.default_model_name}`
@@ -150,10 +158,12 @@ END_OF_STATEMENT
 }
 
 resource "google_bigquery_job" "create_pro_model" {
-  depends_on = [google_project_iam_member.connection_sa_vertex_ai_user]
-  job_id     = "create_pro_model"
+  job_id     = "create_pro_model_${random_id.job_id_suffix.hex}"
   location = var.bigquery_dataset_location
-
+  depends_on = [
+    google_project_service.vertex_ai_api,
+    google_project_iam_member.connection_sa_vertex_ai_user
+  ]
   query {
     query = <<END_OF_STATEMENT
 CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.pro_model_name}`
