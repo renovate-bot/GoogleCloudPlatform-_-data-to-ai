@@ -38,6 +38,7 @@ You need to have access to a Google Cloud project with an active billing account
 
 ```text
 project_id = "<your project id>"
+notification_email = "<your email address for incident alert notifications>"
 ```
 
 There are additional variables that can be provided in that file to further customize the

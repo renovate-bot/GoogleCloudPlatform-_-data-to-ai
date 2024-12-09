@@ -31,3 +31,7 @@ variable "processing_schedule" {
   default = "*/3 * * * *"
   type    = string
 }
+variable "notification_email" {
+  description = "Email address to send new incident alert notifications"
+  type        = string
+}

@@ -128,9 +128,6 @@ resource "google_bigquery_table" "incidents" {
 
 resource "random_id" "job_id_suffix" {
   byte_length = 8
-  lifecycle {
-    prevent_destroy = true  # Prevents the random ID from being regenerated on destroy
-  }
 }
 
 locals {
