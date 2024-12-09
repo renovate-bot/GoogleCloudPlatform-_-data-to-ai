@@ -22,6 +22,8 @@ resource "google_bigquery_connection" "image_bucket_connection" {
   connection_id = "image_bucket_connection"
   project       = var.project_id
   location      = var.bigquery_dataset_location
+  depends_on = [google_project_service.bigquery_connection_api]
+
   cloud_resource {}
 }
 
@@ -34,12 +36,14 @@ resource "google_storage_bucket_iam_member" "connection_sa_bucket_viewer" {
   bucket = google_storage_bucket.image_bucket.name
   role    = "roles/storage.objectViewer"
   member  = local.connection_sa
+  depends_on = [google_bigquery_connection.image_bucket_connection]
 }
 
 resource "google_project_iam_member" "connection_sa_vertex_ai_user" {
   project = var.project_id
   role    = "roles/aiplatform.user"
   member  = local.connection_sa
+  depends_on = [google_bigquery_connection.image_bucket_connection]
 }
 
 resource "google_bigquery_table" "images" {
