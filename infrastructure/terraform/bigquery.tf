@@ -146,7 +146,7 @@ resource "google_bigquery_job" "create_default_model" {
     query = <<END_OF_STATEMENT
 CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.default_model_name}`
   REMOTE WITH CONNECTION `${google_bigquery_connection.image_bucket_connection.id}`
-  OPTIONS(ENDPOINT = 'gemini-1.5-flash');
+  OPTIONS(ENDPOINT = 'gemini-1.5-flash-001');
 END_OF_STATEMENT
 
     create_disposition = ""
@@ -165,7 +165,7 @@ resource "google_bigquery_job" "create_pro_model" {
     query = <<END_OF_STATEMENT
 CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.pro_model_name}`
   REMOTE WITH CONNECTION `${google_bigquery_connection.image_bucket_connection.id}`
-  OPTIONS(ENDPOINT = 'gemini-1.5-pro');
+  OPTIONS(ENDPOINT = 'gemini-1.5-pro-001');
 END_OF_STATEMENT
 
     create_disposition = ""
