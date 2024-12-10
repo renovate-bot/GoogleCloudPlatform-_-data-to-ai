@@ -189,16 +189,17 @@ SET last_process_time = (SELECT MAX(process_time) FROM ${local.dataset_id}.${goo
 SET new_process_time = CURRENT_TIMESTAMP();
 
 INSERT INTO ${local.dataset_id}.${google_bigquery_table.reports.table_id}
-  (uri, image_created, model_used, bus_stop_id, cleanliness_level, description, is_bus_stop, number_of_people)
+  (uri, image_created, model_used, bus_stop_id, cleanliness_level, description, is_bus_stop, number_of_people, model_response_status)
 SELECT
   uri,
   updated,
-  'default',
+  'default' AS model_used,
   (SELECT value FROM UNNEST(metadata) WHERE name = 'stop_id') AS bus_stop_id,
   CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.cleanliness_level') AS INT64) AS cleanliness_level,
   JSON_EXTRACT(ml_generate_text_llm_result, '$.description') AS description,
   CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.is_bus_stop') AS BOOL) AS is_bus_stop,
   CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.number_of_people') AS INT64) AS number_of_people,
+  ml_generate_text_status AS model_response_status
 FROM
   ML.GENERATE_TEXT(
    MODEL `${var.project_id}.${local.dataset_id}.${local.default_model_name}`,
