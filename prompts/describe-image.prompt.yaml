@@ -1,5 +1,6 @@
 title: "Describe bus stop image"
 temperature: 0.2
+max_output_tokens: 2048
 prompt: |
   Analyze this image of a bus stop and provide the details below.
   Return your answer in JSON format as follows. Do not include JSON decorators.

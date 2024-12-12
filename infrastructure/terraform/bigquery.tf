@@ -213,6 +213,7 @@ FROM
     STRUCT (
       """${local.prompt_config.prompt}""" AS prompt,
       ${local.prompt_config.temperature} AS temperature,
+      ${local.prompt_config.max_output_tokens} AS max_output_tokens,
       TRUE AS FLATTEN_JSON_OUTPUT)
   )
 WHERE content_type = "image/jpeg" AND updated > last_process_time;
