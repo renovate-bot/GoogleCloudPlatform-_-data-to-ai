@@ -126,13 +126,19 @@ resource "google_bigquery_table" "incidents" {
   schema              = file("${path.module}/bigquery-schema/incidents.json")
 }
 
-resource "random_id" "job_id_suffix" {
-  byte_length = 8
+data "local_file" "describe_image_prompt_config" {
+  filename = "${path.module}/../../prompts/describe-image.prompt.yaml"
 }
 
 locals {
+  prompt_config = yamldecode(data.local_file.describe_image_prompt_config.content)
+
   default_model_name = "default_model"
   pro_model_name = "pro_model"
+}
+
+resource "random_id" "job_id_suffix" {
+  byte_length = 8
 }
 
 resource "google_bigquery_job" "create_default_model" {
@@ -202,21 +208,12 @@ SELECT
   ml_generate_text_status AS model_response_status
 FROM
   ML.GENERATE_TEXT(
-   MODEL `${var.project_id}.${local.dataset_id}.${local.default_model_name}`,
-   TABLE `${var.project_id}.${local.dataset_id}.${google_bigquery_table.images.table_id}`,
-   STRUCT (
-   '''
-Analyze this image of a bus stop and provide the details below.
-Return your answer in JSON format as follows. Do not include JSON decorators.
-{
-    "cleanliness_level": Integer, # Rate the cleanliness of this bus stop (From 0="Extremely dirty" to 10="Extremely clean"). Focus on littering and broken items.
-    "description": String, # Details about what you see in the image in terms of cleanliness
-    "number_of_people": Integer, # Number of people at the bus stop
-    "is_bus_stop": boolean, # Does it look like a bus stop
-}
-   ''' AS PROMPT,
-   0.2 AS temperature,
-   TRUE AS FLATTEN_JSON_OUTPUT)
+    MODEL `${var.project_id}.${local.dataset_id}.${local.default_model_name}`,
+    TABLE `${var.project_id}.${local.dataset_id}.${google_bigquery_table.images.table_id}`,
+    STRUCT (
+      """${local.prompt_config.prompt}""" AS prompt,
+      ${local.prompt_config.temperature} AS temperature,
+      TRUE AS FLATTEN_JSON_OUTPUT)
   )
 WHERE content_type = "image/jpeg" AND updated > last_process_time;
 
