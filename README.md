@@ -15,15 +15,40 @@ using multimodal GenAI capabilities of Google Cloud.
 
 ## Use Case
 
-The code in this repo processes images of bus stops captured either from buses or taken by
-passengers.
-The images are automatically analysed and if the bus stop is found to be dirty - an incident is
-automatically created. The incident is considered to be resolved if a new image show the bus stop
+Imagine a large city transportation agency which is trying to improve passenger satisfaction. The
+agency would like to be notified if there are issue with cleanliness and safety of the
+bus stops. The city decides to install low cost outdoor facing cameras on its bus fleet and
+automatically upload pictures of the bus stops to a cloud for automatic issue detection. The city
+also provides a customer portal to allow uploading bus stop pictures by passengers.
+
+The images should be automatically analysed and if the bus stop is found to be dirty - an incident
+is automatically created. The incident is considered to be resolved if a new image show the bus stop
 in acceptable condition.
 
-[//]: # (TODO: add architecture diagram)
+## Implementation
 
-## Getting Started
+The code in this repo shows how images uploaded to Google Cloud Storage buckets can be
+automatically analysed without the need to build custom AI/ML models. Only simple and
+intuitive Gemini prompt and SQL code are needed to create a fully functional, scalable and secure
+implementation of a non-trivial image analysis. Additionally, it shows how vector and full text
+search capabilities of BigQuery can be used to implement semantic search of images.
+
+The following is a high level architecture diagram of the solution:
+![Architecture Diagram](docs/architecture.png)
+
+There are two implementation of the solution. One uses a Vertex AI Notebook to show the step-by-step
+implementation of the solution and use a set of test images to illustrate the actual image
+processing. The other implementation is a set of Terraform scripts that automatically creates a
+fully functional deployment of the solution.
+
+Currently, the two implementations create two independent BigQuery datasets and Cloud Storage
+buckets. This is done to be able to run the to implementations independently of each other.
+
+## Getting Started with the Notebook
+
+[//]: # TODO: Brief instructions on how to start the notebook
+
+## Getting Started with the Terraform
 
 ### Prerequisites
 
@@ -68,22 +93,26 @@ in [Cloud Console](https://console.cloud.google.com/cloudscheduler).
 
 ### Upload the test files
 
-There are several test image files in the [data](data) directory. For example, use
+There is a test image files in the [data](data) directory. For example, use
 
 ```shell
 ./copy-image.sh data/bus-stop-1-dirty.jpeg bus-stop-1-dirty.jpeg stop-1
 ```
 
 to simulate capturing of a dirty bus stop. `copy-image.sh` takes three parameters - source file (
-must be a JPEG image), destination object name and the id fo the bus stop.
+must be a JPEG image), destination object name and the id fo the bus stop. You can try to take a
+picture of a bus stop yourself and upload it to the bucket to see how the Gemini model is able to
+analyze it.
 
 ## Analysis
-### Vector search analysis
-#### Finding recent images with broken glass
 
-#### Identifying a bus stop based on a customer uploaded image
+### Vector search analysis
+
+#### Finding recent images with broken glass
+[//]: # TODO()
 
 ### Full text search
+[//]: # TODO()
 
 ## Cleanup
 
