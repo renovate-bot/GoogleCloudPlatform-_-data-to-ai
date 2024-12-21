@@ -106,15 +106,20 @@ must be a JPEG image), destination object name and the id fo the bus stop. You c
 picture of a bus stop yourself and upload it to the bucket to see how the Gemini model is able to
 analyze it.
 
-## Analysis
+[//]: # (## Analysis)
 
-### Vector search analysis
+[//]: # ()
+[//]: # (### Vector search analysis)
 
-#### Finding recent images with broken glass
-[//]: # TODO()
+[//]: # ()
+[//]: # (#### Finding recent images with broken glass)
 
-### Full text search
-[//]: # TODO()
+[//]: # ([//]: # TODO&#40;&#41;)
+
+[//]: # ()
+[//]: # (### Full text search)
+
+[//]: # ([//]: # TODO&#40;&#41;)
 
 ## Cleanup
 
