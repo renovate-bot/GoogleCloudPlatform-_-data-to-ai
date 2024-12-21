@@ -46,7 +46,9 @@ buckets. This is done to be able to run the to implementations independently of 
 
 ## Getting Started with the Notebook
 
-[//]: # TODO: Brief instructions on how to start the notebook
+For a step-by-step walkthrough of the data processing workflow, refer to the [Multimodal Analysis and Search of Bus Stops](./notebooks/multimodal_analysis_search.ipynb) notebook. This notebook is self-sufficient and can be run independently without needing any other components of this repository.
+
+You can run the notebook in a Vertex AI Workbench instance, in Google Colab Enterprise, or directly in BigQuery Studio. It assumes you have a Google Cloud project with permissions to create a Cloud Storage bucket, a BigQuery dataset and a BigQuery cloud resource connection, and to grant that connection's service account the Vertex AI User role in order to interact with Vertex AI models such as Gemini.
 
 ## Getting Started with the Terraform
 
