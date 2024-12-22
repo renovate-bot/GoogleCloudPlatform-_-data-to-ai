@@ -36,13 +36,13 @@ search capabilities of BigQuery can be used to implement semantic search of imag
 The following is a high level architecture diagram of the solution:
 ![Architecture Diagram](docs/architecture.png)
 
-There are two implementation of the solution. One uses a Vertex AI Notebook to show the step-by-step
+There are two implementations of the solution. One uses a Vertex AI Notebook to show the step-by-step
 implementation of the solution and use a set of test images to illustrate the actual image
 processing. The other implementation is a set of Terraform scripts that automatically creates a
 fully functional deployment of the solution.
 
 Currently, the two implementations create two independent BigQuery datasets and Cloud Storage
-buckets. This is done to be able to run the to implementations independently of each other.
+buckets. This is done to be able to run the implementations independently of each other.
 
 ## Getting Started with the Notebook
 
@@ -82,7 +82,7 @@ terraform apply
 ```
 
 There is a chance you will get an error when creating a Cloud Run function the first time you run
-the script. Wait for a couple of minutes and try again.
+the script. Wait for a few minutes and try again.
 
 ## Testing image processing
 
@@ -95,14 +95,14 @@ in [Cloud Console](https://console.cloud.google.com/cloudscheduler).
 
 ### Upload the test files
 
-There is a test image files in the [data](data) directory. For example, use
+There is a test image file in the [data](data) directory. For example, use
 
 ```shell
 ./copy-image.sh data/bus-stop-1-dirty.jpeg bus-stop-1-dirty.jpeg stop-1
 ```
 
-to simulate capturing of a dirty bus stop. `copy-image.sh` takes three parameters - source file (
-must be a JPEG image), destination object name and the id fo the bus stop. You can try to take a
+to simulate capturing an image of a dirty bus stop. `copy-image.sh` takes three parameters - source file (
+must be a JPEG image), destination object name and the id of the bus stop. You can try to take a
 picture of a bus stop yourself and upload it to the bucket to see how the Gemini model is able to
 analyze it.
 
@@ -124,7 +124,7 @@ analyze it.
 ## Cleanup
 
 ```shell
-terraform -chdir infrastucture/terraform destroy 
+terraform -chdir infrastructure/terraform destroy 
 ```
 
 ## Contributing
