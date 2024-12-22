@@ -28,8 +28,14 @@ variable "bigquery_dataset_location" {
 }
 variable "processing_schedule" {
   description = "Schedule of running image processing jobs"
-  default = "*/3 * * * *"
-  type    = string
+  default     = "*/3 * * * *"
+  type        = string
+}
+
+variable "pause_scheduler" {
+  description = "Pause the scheduler which runs images processing jobs"
+  default     = true
+  type        = bool
 }
 variable "notification_email" {
   description = "Email address to send new incident alert notifications"

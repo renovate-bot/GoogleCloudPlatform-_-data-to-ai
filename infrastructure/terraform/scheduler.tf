@@ -6,6 +6,7 @@ resource "google_cloud_scheduler_job" "run_bus_stop_image_processing" {
   attempt_deadline = "320s"
   project          = google_cloudfunctions2_function.processing_invoker.project
   region           = google_cloudfunctions2_function.processing_invoker.location
+  paused           = var.pause_scheduler
 
   retry_config {
     retry_count = 1
