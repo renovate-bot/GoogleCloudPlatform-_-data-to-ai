@@ -41,3 +41,21 @@ variable "notification_email" {
   description = "Email address to send new incident alert notifications"
   type        = string
 }
+
+variable "default_multimodal_vertex_ai_model" {
+  description = "Name of the default multimodal model"
+  type = string
+  default = "gemini-1.5-flash-001"
+}
+
+variable "pro_multimodal_vertex_ai_model" {
+  description = "Name of the default multimodal model"
+  type = string
+  default = "gemini-1.5-pro-001"
+}
+
+variable "text_embeddings_vertex_ai_model" {
+  description = "Name of the pro multimodal model"
+  type = string
+  default = "text-embedding-004"
+}

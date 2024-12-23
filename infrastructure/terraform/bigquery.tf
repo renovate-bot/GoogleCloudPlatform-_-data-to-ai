@@ -27,22 +27,32 @@ resource "google_bigquery_connection" "image_bucket_connection" {
   cloud_resource {}
 }
 
+resource "google_bigquery_connection" "vertex_ai_connection" {
+  connection_id = "vertex_ai_connection"
+  project       = var.project_id
+  location      = var.bigquery_dataset_location
+  depends_on    = [google_project_service.bigquery_connection_api]
+
+  cloud_resource {}
+}
+
 locals {
-  connection_sa = format("serviceAccount:%s", google_bigquery_connection.image_bucket_connection.cloud_resource[0].service_account_id)
+  image_bucket_connection_sa = format("serviceAccount:%s", google_bigquery_connection.image_bucket_connection.cloud_resource[0].service_account_id)
+  vertex_ai_connection_sa = format("serviceAccount:%s", google_bigquery_connection.vertex_ai_connection.cloud_resource[0].service_account_id)
   dataset_id    = google_bigquery_dataset.bus-stop-image-processing.dataset_id
 }
 
 resource "google_storage_bucket_iam_member" "connection_sa_bucket_viewer" {
   bucket     = google_storage_bucket.image_bucket.name
   role       = "roles/storage.objectViewer"
-  member     = local.connection_sa
+  member     = local.image_bucket_connection_sa
   depends_on = [google_bigquery_connection.image_bucket_connection]
 }
 
 resource "google_project_iam_member" "connection_sa_vertex_ai_user" {
   project    = var.project_id
   role       = "roles/aiplatform.user"
-  member     = local.connection_sa
+  member     = local.vertex_ai_connection_sa
   depends_on = [google_bigquery_connection.image_bucket_connection]
 }
 
@@ -191,16 +201,20 @@ data "local_file" "describe_image_prompt_config" {
 locals {
   prompt_config = yamldecode(data.local_file.describe_image_prompt_config.content)
 
-  default_model_name = "default_model"
-  pro_model_name     = "pro_model"
+  default_model_name        = "default_model"
+  pro_model_name            = "pro_model"
+  text_embedding_model_name = "text_embedding_model"
 }
 
-resource "random_id" "job_id_suffix" {
-  byte_length = 8
+resource "random_id" "default_model_job_id_suffix" {
+  byte_length = 4
+  keepers = {
+    model_name = var.default_multimodal_vertex_ai_model
+  }
 }
 
 resource "google_bigquery_job" "create_default_model" {
-  job_id     = "create_default_model_${random_id.job_id_suffix.hex}"
+  job_id     = "create_default_model_${random_id.default_model_job_id_suffix.hex}"
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
@@ -209,8 +223,8 @@ resource "google_bigquery_job" "create_default_model" {
   query {
     query = <<END_OF_STATEMENT
 CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.default_model_name}`
-  REMOTE WITH CONNECTION `${google_bigquery_connection.image_bucket_connection.id}`
-  OPTIONS(ENDPOINT = 'gemini-1.5-flash-001');
+  REMOTE WITH CONNECTION `${google_bigquery_connection.vertex_ai_connection.id}`
+  OPTIONS(ENDPOINT = '${var.default_multimodal_vertex_ai_model}');
 END_OF_STATEMENT
 
     create_disposition = ""
@@ -218,8 +232,14 @@ END_OF_STATEMENT
   }
 }
 
+resource "random_id" "pro_model_job_id_suffix" {
+  byte_length = 4
+  keepers = {
+    model_name = var.pro_multimodal_vertex_ai_model
+  }
+}
 resource "google_bigquery_job" "create_pro_model" {
-  job_id     = "create_pro_model_${random_id.job_id_suffix.hex}"
+  job_id     = "create_pro_model_${random_id.pro_model_job_id_suffix.hex}"
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
@@ -228,8 +248,34 @@ resource "google_bigquery_job" "create_pro_model" {
   query {
     query = <<END_OF_STATEMENT
 CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.pro_model_name}`
-  REMOTE WITH CONNECTION `${google_bigquery_connection.image_bucket_connection.id}`
-  OPTIONS(ENDPOINT = 'gemini-1.5-pro-001');
+  REMOTE WITH CONNECTION `${google_bigquery_connection.vertex_ai_connection.id}`
+  OPTIONS(ENDPOINT = '${var.pro_multimodal_vertex_ai_model}');
+END_OF_STATEMENT
+
+    create_disposition = ""
+    write_disposition  = ""
+  }
+}
+
+resource "random_id" "text_embeddings_model_job_id_suffix" {
+  byte_length = 4
+  keepers = {
+    model_name = var.text_embeddings_vertex_ai_model
+  }
+}
+
+resource "google_bigquery_job" "create_text_embedding_model" {
+  job_id     = "create_text_embedding_model_${random_id.text_embeddings_model_job_id_suffix.hex}"
+  location   = var.bigquery_dataset_location
+  depends_on = [
+    google_project_service.vertex_ai_api,
+    google_project_iam_member.connection_sa_vertex_ai_user
+  ]
+  query {
+    query = <<END_OF_STATEMENT
+CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.text_embedding_model_name}`
+  REMOTE WITH CONNECTION `${google_bigquery_connection.vertex_ai_connection.id}`
+  OPTIONS(ENDPOINT = '${var.text_embeddings_vertex_ai_model}');
 END_OF_STATEMENT
 
     create_disposition = ""
