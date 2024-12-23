@@ -38,18 +38,26 @@ resource "google_bigquery_connection" "vertex_ai_connection" {
 
 locals {
   image_bucket_connection_sa = format("serviceAccount:%s", google_bigquery_connection.image_bucket_connection.cloud_resource[0].service_account_id)
-  vertex_ai_connection_sa = format("serviceAccount:%s", google_bigquery_connection.vertex_ai_connection.cloud_resource[0].service_account_id)
-  dataset_id    = google_bigquery_dataset.bus-stop-image-processing.dataset_id
+  vertex_ai_connection_sa    = format("serviceAccount:%s", google_bigquery_connection.vertex_ai_connection.cloud_resource[0].service_account_id)
+  dataset_id                 = google_bigquery_dataset.bus-stop-image-processing.dataset_id
+  fq_dataset_id              = "${var.project_id}.${google_bigquery_dataset.bus-stop-image-processing.dataset_id}"
 }
 
-resource "google_storage_bucket_iam_member" "connection_sa_bucket_viewer" {
+resource "google_storage_bucket_iam_member" "image_bucket_connection_sa_bucket_viewer" {
   bucket     = google_storage_bucket.image_bucket.name
   role       = "roles/storage.objectViewer"
   member     = local.image_bucket_connection_sa
   depends_on = [google_bigquery_connection.image_bucket_connection]
 }
 
-resource "google_project_iam_member" "connection_sa_vertex_ai_user" {
+resource "google_project_iam_member" "image_bucket_connection_sa_vertex_ai_user" {
+  project    = var.project_id
+  role       = "roles/aiplatform.user"
+  member     = local.image_bucket_connection_sa
+  depends_on = [google_bigquery_connection.image_bucket_connection]
+}
+
+resource "google_project_iam_member" "vertex_ai_connection_sa_vertex_ai_user" {
   project    = var.project_id
   role       = "roles/aiplatform.user"
   member     = local.vertex_ai_connection_sa
@@ -208,7 +216,7 @@ locals {
 
 resource "random_id" "default_model_job_id_suffix" {
   byte_length = 4
-  keepers = {
+  keepers     = {
     model_name = var.default_multimodal_vertex_ai_model
   }
 }
@@ -218,7 +226,7 @@ resource "google_bigquery_job" "create_default_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    google_project_iam_member.connection_sa_vertex_ai_user
+    google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -234,7 +242,7 @@ END_OF_STATEMENT
 
 resource "random_id" "pro_model_job_id_suffix" {
   byte_length = 4
-  keepers = {
+  keepers     = {
     model_name = var.pro_multimodal_vertex_ai_model
   }
 }
@@ -243,7 +251,7 @@ resource "google_bigquery_job" "create_pro_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    google_project_iam_member.connection_sa_vertex_ai_user
+    google_project_iam_member.image_bucket_connection_sa_vertex_ai_user
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -259,7 +267,7 @@ END_OF_STATEMENT
 
 resource "random_id" "text_embeddings_model_job_id_suffix" {
   byte_length = 4
-  keepers = {
+  keepers     = {
     model_name = var.text_embeddings_vertex_ai_model
   }
 }
@@ -269,7 +277,7 @@ resource "google_bigquery_job" "create_text_embedding_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    google_project_iam_member.connection_sa_vertex_ai_user
+    google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -289,46 +297,15 @@ resource "google_bigquery_routine" "process_images_procedure" {
   routine_type    = "PROCEDURE"
   language        = "SQL"
   depends_on      = [google_bigquery_job.create_default_model]
-  definition_body = <<END_OF_PROCEDURE
-DECLARE last_process_time TIMESTAMP;
-DECLARE new_process_time TIMESTAMP;
-
-BEGIN TRANSACTION;
-
-SET last_process_time = (SELECT MAX(process_time) FROM ${local.dataset_id}.${google_bigquery_table.process_watermark.table_id});
-SET new_process_time = CURRENT_TIMESTAMP();
-
-INSERT INTO ${local.dataset_id}.${google_bigquery_table.reports.table_id}
-  (uri, image_created, model_used, bus_stop_id, cleanliness_level, description, is_bus_stop, number_of_people, model_response_status)
-SELECT
-  uri,
-  updated,
-  'default' AS model_used,
-  (SELECT value FROM UNNEST(metadata) WHERE name = 'stop_id') AS bus_stop_id,
-  CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.cleanliness_level') AS INT64) AS cleanliness_level,
-  JSON_EXTRACT(ml_generate_text_llm_result, '$.description') AS description,
-  CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.is_bus_stop') AS BOOL) AS is_bus_stop,
-  CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.number_of_people') AS INT64) AS number_of_people,
-  ml_generate_text_status AS model_response_status
-FROM
-  ML.GENERATE_TEXT(
-    MODEL `${var.project_id}.${local.dataset_id}.${local.default_model_name}`,
-    TABLE `${var.project_id}.${local.dataset_id}.${google_bigquery_table.images.table_id}`,
-    STRUCT (
-      """${local.prompt_config.prompt}""" AS prompt,
-      ${local.prompt_config.temperature} AS temperature,
-      ${local.prompt_config.max_output_tokens} AS max_output_tokens,
-      TRUE AS FLATTEN_JSON_OUTPUT)
-  )
-WHERE content_type = "image/jpeg" AND updated > last_process_time;
-
--- Update the process time watermark
-UPDATE `${var.project_id}.${local.dataset_id}.${google_bigquery_table.process_watermark.table_id}`
-SET process_time = new_process_time
-WHERE TRUE;
-
-COMMIT TRANSACTION;
-END_OF_PROCEDURE
+  definition_body = templatefile("${path.module}/bigquery-routines/process-images.sql.tftpl", {
+    process_watermark_table = "${local.fq_dataset_id}.${google_bigquery_table.process_watermark.table_id}"
+    images_table            = "${local.fq_dataset_id}.${google_bigquery_table.images.table_id}"
+    reports_table           = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+    text_embeddings_table   = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
+    text_embedding_model    = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
+    multimodal_model        = var.default_multimodal_vertex_ai_model
+    text_embeddings_model   = var.text_embeddings_vertex_ai_model
+  })
 }
 
 resource "google_bigquery_routine" "update_incidents_procedure" {

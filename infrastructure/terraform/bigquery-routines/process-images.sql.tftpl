@@ -1,0 +1,66 @@
+DECLARE last_process_time TIMESTAMP;
+DECLARE new_process_time TIMESTAMP;
+
+BEGIN TRANSACTION;
+
+SET last_process_time = (SELECT MAX(process_time) FROM `${process_watermark_table}`);
+SET new_process_time = CURRENT_TIMESTAMP();
+
+CREATE TEMP TABLE new_reports AS
+SELECT
+    GENERATE_UUID() as report_id,
+    uri,
+    updated,
+    '${multimodal_model}' AS model_used,
+    (SELECT value FROM UNNEST(metadata) WHERE name = 'stop_id') AS bus_stop_id,
+    CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.cleanliness_level') AS INT64) AS cleanliness_level,
+    JSON_EXTRACT(ml_generate_text_llm_result, '$.description') AS description,
+    CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.is_bus_stop') AS BOOL) AS is_bus_stop,
+    CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.number_of_people') AS INT64) AS number_of_people,
+    ml_generate_text_status AS model_response_status
+FROM
+    ML.GENERATE_TEXT(
+            MODEL `event-processing-demo.bus_stop_image_processing.default_model`,
+        TABLE `${images_table}`,
+            STRUCT (
+                    """You are a transit supervisor responsible for monitoring bus stops in order to ensure they are safe and clean for everyone.
+              The bus stops are owned and operated by your company CleanSight.
+              Analyze these pictures of bus stop images and provide accurate details around safety and cleanliness in and around the bus stop.
+              A bus stop is comprised of any combination of the following physical assets: a bench, a sign, a shelter, and/or a trash can.
+              Return your answer in JSON format as follows. Do not include JSON decorators.
+              {
+                  "cleanliness_level": Integer, # Rate the cleanliness of this bus stop (From 0="Extremely dirty" to 10="Extremely clean"). Focus on littering and broken items.
+    "description": String, # Details about what you see in the image in terms of cleanliness
+    "number_of_people": Integer, # Number of people at the bus stop
+    "is_bus_stop": boolean, # Does it look like a bus stop
+}""" AS prompt,
+                    0.2 AS temperature,
+                    2048 AS max_output_tokens,
+                    TRUE AS FLATTEN_JSON_OUTPUT)
+        )
+WHERE content_type = "image/jpeg" AND updated > last_process_time;
+
+-- Insert new reports
+INSERT INTO `${reports_table}` (report_id, uri, image_created, model_used, bus_stop_id, cleanliness_level, description, number_of_people, is_bus_stop, model_response_status)
+SELECT report_id, uri, updated, model_used, bus_stop_id, cleanliness_level, description, number_of_people, is_bus_stop, model_response_status FROM new_reports;
+
+-- Generate text embeddings
+INSERT INTO `${text_embeddings_table}` (report_id, model_used, embedding, model_response_status)
+SELECT
+    report_id,
+    '${text_embeddings_model}',
+    ml_generate_embedding_result AS embedding,
+    ml_generate_embedding_status AS status
+FROM
+    ML.GENERATE_EMBEDDING(
+            MODEL `${text_embedding_model}`,
+            (SELECT report_id, description as content FROM new_reports WHERE description IS NOT NULL),
+            STRUCT('SEMANTIC_SIMILARITY' as task_type)
+        );
+
+-- Update the process time watermark
+UPDATE `${process_watermark_table}`
+SET process_time = new_process_time
+WHERE TRUE;
+
+COMMIT TRANSACTION;
