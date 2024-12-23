@@ -22,27 +22,27 @@ resource "google_bigquery_connection" "image_bucket_connection" {
   connection_id = "image_bucket_connection"
   project       = var.project_id
   location      = var.bigquery_dataset_location
-  depends_on = [google_project_service.bigquery_connection_api]
+  depends_on    = [google_project_service.bigquery_connection_api]
 
   cloud_resource {}
 }
 
 locals {
   connection_sa = format("serviceAccount:%s", google_bigquery_connection.image_bucket_connection.cloud_resource[0].service_account_id)
-  dataset_id = google_bigquery_dataset.bus-stop-image-processing.dataset_id
+  dataset_id    = google_bigquery_dataset.bus-stop-image-processing.dataset_id
 }
 
 resource "google_storage_bucket_iam_member" "connection_sa_bucket_viewer" {
-  bucket = google_storage_bucket.image_bucket.name
-  role    = "roles/storage.objectViewer"
-  member  = local.connection_sa
+  bucket     = google_storage_bucket.image_bucket.name
+  role       = "roles/storage.objectViewer"
+  member     = local.connection_sa
   depends_on = [google_bigquery_connection.image_bucket_connection]
 }
 
 resource "google_project_iam_member" "connection_sa_vertex_ai_user" {
-  project = var.project_id
-  role    = "roles/aiplatform.user"
-  member  = local.connection_sa
+  project    = var.project_id
+  role       = "roles/aiplatform.user"
+  member     = local.connection_sa
   depends_on = [google_bigquery_connection.image_bucket_connection]
 }
 
@@ -66,6 +66,12 @@ resource "google_bigquery_table" "reports" {
   description         = "Results of data extraction for an individual image"
   clustering          = ["bus_stop_id"]
   schema              = file("${path.module}/bigquery-schema/reports.json")
+
+  table_constraints {
+    primary_key {
+      columns = ["report_id"]
+    }
+  }
 }
 
 resource "google_bigquery_job" "reports_search_index" {
@@ -90,9 +96,9 @@ resource "google_bigquery_job" "populate_process_watermark" {
   depends_on = [google_bigquery_table.process_watermark]
 
   query {
-    query = "INSERT INTO ${local.dataset_id}.${google_bigquery_table.process_watermark.table_id} VALUES (TIMESTAMP('2000-01-01 00:00:00+00'))"
+    query              = "INSERT INTO ${local.dataset_id}.${google_bigquery_table.process_watermark.table_id} VALUES (TIMESTAMP('2000-01-01 00:00:00+00'))"
     create_disposition = ""
-    write_disposition = ""
+    write_disposition  = ""
   }
   location = var.bigquery_dataset_location
 }
@@ -110,9 +116,9 @@ resource "google_bigquery_job" "populate_report_watermark" {
   depends_on = [google_bigquery_table.report_watermark]
 
   query {
-    query = "INSERT INTO ${local.dataset_id}.${google_bigquery_table.report_watermark.table_id} VALUES (TIMESTAMP('2000-01-01 00:00:00+00'))"
+    query              = "INSERT INTO ${local.dataset_id}.${google_bigquery_table.report_watermark.table_id} VALUES (TIMESTAMP('2000-01-01 00:00:00+00'))"
     create_disposition = ""
-    write_disposition = ""
+    write_disposition  = ""
   }
   location = var.bigquery_dataset_location
 }
@@ -124,6 +130,58 @@ resource "google_bigquery_table" "incidents" {
   description         = "Incidents generated based on the attributes of the processed images"
   clustering          = ["bus_stop_id"]
   schema              = file("${path.module}/bigquery-schema/incidents.json")
+
+  table_constraints {
+    foreign_keys {
+      name = "fk_incidents_open_reports"
+      referenced_table {
+        project_id = var.project_id
+        dataset_id = google_bigquery_dataset.bus-stop-image-processing.dataset_id
+        table_id   = google_bigquery_table.reports.table_id
+      }
+      column_references {
+        referencing_column = "open_report_id"
+        referenced_column  = "report_id"
+      }
+    }
+
+    foreign_keys {
+      name = "fk_incidents_resolve_reports"
+      referenced_table {
+        project_id = var.project_id
+        dataset_id = google_bigquery_dataset.bus-stop-image-processing.dataset_id
+        table_id   = google_bigquery_table.reports.table_id
+      }
+      column_references {
+        referencing_column = "resolve_report_id"
+        referenced_column  = "report_id"
+      }
+    }
+  }
+}
+
+resource "google_bigquery_table" "text_embeddings" {
+  deletion_protection = false
+  dataset_id          = local.dataset_id
+  table_id            = "text_embeddings"
+  description         = "Embeddings generated on the image description produced by the model "
+  clustering          = ["report_id"]
+  schema              = file("${path.module}/bigquery-schema/text_embeddings.json")
+
+  table_constraints {
+    foreign_keys {
+      name = "fk_text_embeddings_reports"
+      referenced_table {
+        project_id = var.project_id
+        dataset_id = google_bigquery_dataset.bus-stop-image-processing.dataset_id
+        table_id   = google_bigquery_table.reports.table_id
+      }
+      column_references {
+        referencing_column = "report_id"
+        referenced_column  = "report_id"
+      }
+    }
+  }
 }
 
 data "local_file" "describe_image_prompt_config" {
@@ -134,7 +192,7 @@ locals {
   prompt_config = yamldecode(data.local_file.describe_image_prompt_config.content)
 
   default_model_name = "default_model"
-  pro_model_name = "pro_model"
+  pro_model_name     = "pro_model"
 }
 
 resource "random_id" "job_id_suffix" {
@@ -142,8 +200,8 @@ resource "random_id" "job_id_suffix" {
 }
 
 resource "google_bigquery_job" "create_default_model" {
-  job_id     = "create_default_model_${random_id.job_id_suffix.hex}" 
-  location = var.bigquery_dataset_location
+  job_id     = "create_default_model_${random_id.job_id_suffix.hex}"
+  location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
     google_project_iam_member.connection_sa_vertex_ai_user
@@ -156,13 +214,13 @@ CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.default_m
 END_OF_STATEMENT
 
     create_disposition = ""
-    write_disposition = ""
+    write_disposition  = ""
   }
 }
 
 resource "google_bigquery_job" "create_pro_model" {
   job_id     = "create_pro_model_${random_id.job_id_suffix.hex}"
-  location = var.bigquery_dataset_location
+  location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
     google_project_iam_member.connection_sa_vertex_ai_user
@@ -175,16 +233,16 @@ CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.pro_model
 END_OF_STATEMENT
 
     create_disposition = ""
-    write_disposition = ""
+    write_disposition  = ""
   }
 }
 
 resource "google_bigquery_routine" "process_images_procedure" {
-  dataset_id = local.dataset_id
-  routine_id = "process_images"
-  routine_type = "PROCEDURE"
-  language = "SQL"
-  depends_on = [google_bigquery_job.create_default_model]
+  dataset_id      = local.dataset_id
+  routine_id      = "process_images"
+  routine_type    = "PROCEDURE"
+  language        = "SQL"
+  depends_on      = [google_bigquery_job.create_default_model]
   definition_body = <<END_OF_PROCEDURE
 DECLARE last_process_time TIMESTAMP;
 DECLARE new_process_time TIMESTAMP;
@@ -228,10 +286,10 @@ END_OF_PROCEDURE
 }
 
 resource "google_bigquery_routine" "update_incidents_procedure" {
-  dataset_id = local.dataset_id
-  routine_id = "update_incidents"
-  routine_type = "PROCEDURE"
-  language = "SQL"
+  dataset_id      = local.dataset_id
+  routine_id      = "update_incidents"
+  routine_type    = "PROCEDURE"
+  language        = "SQL"
   definition_body = <<END_OF_PROCEDURE
 DECLARE last_process_time TIMESTAMP;
 DECLARE new_process_time TIMESTAMP;

@@ -35,4 +35,4 @@ destination=$2
 bus_stop_id=$3
 
 gcloud storage cp "${source}" gs://${IMAGE_BUCKET}/images/"${destination}" \
-  --custom-metadata=stop_id=${bus_stop_id}
+  --custom-metadata=stop_id="${bus_stop_id}"
