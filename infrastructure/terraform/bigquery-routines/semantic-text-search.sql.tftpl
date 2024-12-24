@@ -1,0 +1,22 @@
+WITH search_results AS (SELECT
+      base.report_id,
+      distance
+    FROM
+      VECTOR_SEARCH(
+        TABLE `${text_embeddings_table}`,
+        'embedding',
+        (
+          SELECT * FROM ML.GENERATE_EMBEDDING(
+          MODEL `${text_embedding_model}`,
+          (
+            SELECT search_terms AS content
+          ),
+          STRUCT('SEMANTIC_SIMILARITY' as task_type))
+        ),
+        top_k => 10,
+        distance_type => 'COSINE'
+      )
+)
+SELECT r.*, sr.distance FROM `${reports_table}` r, search_results sr
+ WHERE r.report_id = sr.report_id
+ ORDER BY sr.distance

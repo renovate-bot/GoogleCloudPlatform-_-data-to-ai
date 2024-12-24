@@ -308,6 +308,28 @@ resource "google_bigquery_routine" "process_images_procedure" {
   })
 }
 
+resource "google_bigquery_routine" "semantic_text_search_tvf" {
+  dataset_id      = local.dataset_id
+  routine_id      = "semantic_text_search"
+  routine_type    = "TABLE_VALUED_FUNCTION"
+  language        = "SQL"
+  definition_body = templatefile("${path.module}/bigquery-routines/semantic-text-search.sql.tftpl",{
+    text_embeddings_table   = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
+    text_embedding_model    = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
+    reports_table           = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+  })
+  arguments {
+    name          = "search_terms"
+    argument_kind = "FIXED_TYPE"
+    data_type     = jsonencode({ "typeKind" : "STRING" })
+  }
+#  TODO: for some reason the TVF doesn't like the function parameter as a top_k value.
+#  arguments {
+#    name          = "max_number_of_results"
+#    argument_kind = "FIXED_TYPE"
+#    data_type     = jsonencode({ "typeKind" : "INT64" })
+#  }
+}
 resource "google_bigquery_routine" "update_incidents_procedure" {
   dataset_id      = local.dataset_id
   routine_id      = "update_incidents"
