@@ -13,10 +13,9 @@ WITH search_results AS (SELECT
           ),
           STRUCT('SEMANTIC_SIMILARITY' as task_type))
         ),
-        top_k => 10,
+        top_k => ${max_number_of_results},
         distance_type => 'COSINE'
       )
 )
 SELECT r.*, sr.distance FROM `${reports_table}` r, search_results sr
  WHERE r.report_id = sr.report_id
- ORDER BY sr.distance

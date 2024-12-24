@@ -92,13 +92,23 @@ resource "google_bigquery_table" "reports" {
   }
 }
 
+resource "random_id" "reports_search_job_id_suffix" {
+  byte_length = 4
+  keepers     = {
+    table_creation_itme = google_bigquery_table.reports.creation_time
+  }
+}
+
 resource "google_bigquery_job" "reports_search_index" {
-  job_id     = "reports_search_index"
+  job_id     = "reports_search_index_${random_id.reports_search_job_id_suffix.hex}"
   depends_on = [google_bigquery_table.reports]
 
   query {
-    query = "CREATE SEARCH INDEX IF NOT EXISTS reports_search_index ON ${google_bigquery_table.reports.table_id} (description)"
+    query = "CREATE SEARCH INDEX IF NOT EXISTS reports_search_index ON `${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}` (description)"
+    create_disposition = ""
+    write_disposition  = ""
   }
+  location = var.bigquery_dataset_location
 }
 
 resource "google_bigquery_table" "process_watermark" {
@@ -109,8 +119,15 @@ resource "google_bigquery_table" "process_watermark" {
   schema              = file("${path.module}/bigquery-schema/process_watermark.json")
 }
 
+resource "random_id" "populate_process_watermark_job_id_suffix" {
+  byte_length = 4
+  keepers     = {
+    table_creation_itme = google_bigquery_table.process_watermark.creation_time
+  }
+}
+
 resource "google_bigquery_job" "populate_process_watermark" {
-  job_id     = "set_initial_process_watermark"
+  job_id     = "set_initial_process_watermark_${random_id.populate_process_watermark_job_id_suffix.hex}"
   depends_on = [google_bigquery_table.process_watermark]
 
   query {
@@ -129,8 +146,15 @@ resource "google_bigquery_table" "report_watermark" {
   schema              = file("${path.module}/bigquery-schema/report_watermark.json")
 }
 
+resource "random_id" "populate_report_watermark_job_id_suffix" {
+  byte_length = 4
+  keepers     = {
+    table_creation_itme = google_bigquery_table.report_watermark.creation_time
+  }
+}
+
 resource "google_bigquery_job" "populate_report_watermark" {
-  job_id     = "set_initial_report_watermark"
+  job_id     = "set_initial_report_watermark_${random_id.populate_report_watermark_job_id_suffix.hex}"
   depends_on = [google_bigquery_table.report_watermark]
 
   query {
@@ -292,11 +316,17 @@ END_OF_STATEMENT
 }
 
 resource "google_bigquery_routine" "process_images_procedure" {
-  dataset_id      = local.dataset_id
-  routine_id      = "process_images"
-  routine_type    = "PROCEDURE"
-  language        = "SQL"
-  depends_on      = [google_bigquery_job.create_default_model]
+  dataset_id   = local.dataset_id
+  routine_id   = "process_images"
+  routine_type = "PROCEDURE"
+  language     = "SQL"
+  depends_on   = [google_bigquery_job.create_default_model]
+  lifecycle {
+    precondition {
+      condition     = google_bigquery_job.create_default_model.status[0].state == "DONE" && length(google_bigquery_job.create_default_model.status[0].error_result) == 0
+      error_message = "BigQuery jobs creating models haven't completed yet or failed. Please check they have completed successfully and re-run 'terraform apply'"
+    }
+  }
   definition_body = templatefile("${path.module}/bigquery-routines/process-images.sql.tftpl", {
     process_watermark_table = "${local.fq_dataset_id}.${google_bigquery_table.process_watermark.table_id}"
     images_table            = "${local.fq_dataset_id}.${google_bigquery_table.images.table_id}"
@@ -313,22 +343,17 @@ resource "google_bigquery_routine" "semantic_text_search_tvf" {
   routine_id      = "semantic_text_search"
   routine_type    = "TABLE_VALUED_FUNCTION"
   language        = "SQL"
-  definition_body = templatefile("${path.module}/bigquery-routines/semantic-text-search.sql.tftpl",{
-    text_embeddings_table   = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
-    text_embedding_model    = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
-    reports_table           = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+  definition_body = templatefile("${path.module}/bigquery-routines/semantic-text-search.sql.tftpl", {
+    text_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
+    text_embedding_model  = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
+    reports_table         = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+    max_number_of_results = 10
   })
   arguments {
     name          = "search_terms"
     argument_kind = "FIXED_TYPE"
     data_type     = jsonencode({ "typeKind" : "STRING" })
   }
-#  TODO: for some reason the TVF doesn't like the function parameter as a top_k value.
-#  arguments {
-#    name          = "max_number_of_results"
-#    argument_kind = "FIXED_TYPE"
-#    data_type     = jsonencode({ "typeKind" : "INT64" })
-#  }
 }
 resource "google_bigquery_routine" "update_incidents_procedure" {
   dataset_id      = local.dataset_id
