@@ -16,6 +16,8 @@ resource "google_bigquery_dataset" "bus-stop-image-processing" {
   dataset_id    = "bus_stop_image_processing"
   friendly_name = "Bus Stop Image Processing"
   location      = var.bigquery_dataset_location
+
+  delete_contents_on_destroy = true
 }
 
 resource "google_bigquery_connection" "image_bucket_connection" {
@@ -241,7 +243,7 @@ locals {
 resource "random_id" "default_model_job_id_suffix" {
   byte_length = 4
   keepers     = {
-    model_name = var.default_multimodal_vertex_ai_model
+    model = var.default_multimodal_vertex_ai_model
   }
 }
 
@@ -324,7 +326,7 @@ resource "google_bigquery_routine" "process_images_procedure" {
   lifecycle {
     precondition {
       condition     = google_bigquery_job.create_default_model.status[0].state == "DONE" && length(google_bigquery_job.create_default_model.status[0].error_result) == 0
-      error_message = "BigQuery jobs creating models haven't completed yet or failed. Please check they have completed successfully and re-run 'terraform apply'"
+      error_message = "BigQuery job creating the default model hasn't completed yet or failed. Wait until it completes successfully and re-run 'terraform apply'"
     }
   }
   definition_body = templatefile("${path.module}/bigquery-routines/process-images.sql.tftpl", {
@@ -343,6 +345,14 @@ resource "google_bigquery_routine" "semantic_text_search_tvf" {
   routine_id      = "semantic_text_search"
   routine_type    = "TABLE_VALUED_FUNCTION"
   language        = "SQL"
+
+  lifecycle {
+    precondition {
+      condition     = google_bigquery_job.create_text_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_text_embedding_model.status[0].error_result) == 0
+      error_message = "BigQuery job creating the text embedding model hasn't completed yet or failed. Wait until it completes successfully and re-run 'terraform apply'"
+    }
+  }
+
   definition_body = templatefile("${path.module}/bigquery-routines/semantic-text-search.sql.tftpl", {
     text_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
     text_embedding_model  = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
@@ -360,68 +370,9 @@ resource "google_bigquery_routine" "update_incidents_procedure" {
   routine_id      = "update_incidents"
   routine_type    = "PROCEDURE"
   language        = "SQL"
-  definition_body = <<END_OF_PROCEDURE
-DECLARE last_process_time TIMESTAMP;
-DECLARE new_process_time TIMESTAMP;
-
-BEGIN TRANSACTION;
-SET last_process_time = (SELECT MAX(process_time) FROM ${local.dataset_id}.${google_bigquery_table.report_watermark.table_id});
-SET new_process_time = CURRENT_TIMESTAMP();
-
--- Main MERGE statement to update or insert incidents based on new reports
-MERGE ${local.dataset_id}.${google_bigquery_table.incidents.table_id} AS target
-USING (
-  -- CTE to get the latest report for each bus stop
-  WITH latest_reports AS (
-    SELECT
-      *,
-      -- Assign row numbers to reports for each bus stop, ordered by update time descending
-      ROW_NUMBER() OVER (PARTITION BY bus_stop_id ORDER BY image_created DESC) AS report_number
-    FROM ${local.dataset_id}.${google_bigquery_table.reports.table_id}
-    WHERE image_created > last_process_time
-  )
-  -- Main subquery to prepare data for MERGE operation
-  SELECT
-    lr.bus_stop_id,
-    -- Determine if an incident should be resolved based on cleanliness threshold
-    CASE
-      WHEN lr.cleanliness_level >= 6 THEN TRUE
-      ELSE FALSE
-    END AS should_resolve,
-    i.incident_id,
-    lr.report_id,
-    i.open_report_id
-  FROM latest_reports lr
-  -- Left join to find existing open incidents for each bus stop
-  LEFT JOIN ${local.dataset_id}.${google_bigquery_table.incidents.table_id} i
-    ON lr.bus_stop_id = i.bus_stop_id
-    AND i.status = "OPEN"
-  -- Only consider the most recent report for each bus stop
-  WHERE lr.report_number = 1
-) AS source
-ON target.incident_id = source.incident_id
-
--- Update existing incidents: mark as resolved if cleanliness has improved
-WHEN MATCHED AND source.should_resolve THEN
-  UPDATE SET
-    status = "RESOLVED",
-    resolve_report_id = source.report_id
-
--- Insert new incidents: create for stops with low cleanliness and no open incident
-WHEN NOT MATCHED AND NOT source.should_resolve THEN
-  INSERT (incident_id, bus_stop_id, status, open_report_id)
-  VALUES (GENERATE_UUID(), source.bus_stop_id, "OPEN", source.report_id)
-
--- Update existing incidents: set open_report_id if it's missing
-WHEN MATCHED AND NOT source.should_resolve AND target.open_report_id IS NULL THEN
-  UPDATE SET
-    open_report_id = source.report_id;
-
--- Update the process time watermark
-UPDATE ${local.dataset_id}.${google_bigquery_table.report_watermark.table_id}
-SET process_time = new_process_time
-WHERE TRUE;
-
-COMMIT TRANSACTION;
-END_OF_PROCEDURE
+  definition_body = templatefile("${path.module}/bigquery-routines/update-incidents-procedure.sql.tftpl", {
+    report_watermark_table = "${local.fq_dataset_id}.${google_bigquery_table.report_watermark.table_id}"
+    incidents_table            = "${local.fq_dataset_id}.${google_bigquery_table.incidents.table_id}"
+    reports_table           = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+  })
 }
