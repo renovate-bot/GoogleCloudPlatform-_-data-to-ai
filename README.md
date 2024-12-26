@@ -191,7 +191,8 @@ WHERE SEARCH(description, "broken glass");
 ### Semantic search using text embeddings
 
 Semantic search can find matches even when the exact words don't occur in the description.
-Function `semantic_text_search` takes the text to search as parameter to perform a [VECTOR_SEARCH](https://cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search)
+Function `semantic_text_search` takes the text to search as parameter to perform
+a [VECTOR_SEARCH](https://cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search)
 against the generated text embeddings:
 
 ```sql
@@ -203,6 +204,15 @@ ORDER BY distance
 The current implementation of the function is hardcoded to return top 10 closest matches (records
 from `reports` table). It also includes the `distance` column, which can be used to gauge how
 semantically close the matches are.
+
+### Semantic search using multimodal embeddings
+
+[Multimodal embeddings and search](https://cloud.google.com/bigquery/docs/generate-multimodal-embeddings)
+are very similar to creating text embeddings and searching them.
+The primary difference is a different model used to generate the embeddings.
+
+The majority of the bus stop image embeddings are very similar to each other when default
+embedding model is used. Vector searches can return a number of images with very similar distance.
 
 ## Cleanup
 

@@ -56,6 +56,7 @@ resource "google_bigquery_table_iam_member" "data_processor_sa_bigquery_editor" 
     "report_watermark" = google_bigquery_table.report_watermark.id,
     "incidents" = google_bigquery_table.incidents.id,
     "text_embeddings" = google_bigquery_table.text_embeddings.id,
+    "multimodal_embeddings" = google_bigquery_table.multimodal_embeddings.id,
   })
   table_id = each.value
 }

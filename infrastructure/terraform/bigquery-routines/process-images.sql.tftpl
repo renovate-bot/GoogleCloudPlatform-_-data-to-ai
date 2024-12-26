@@ -6,12 +6,15 @@ BEGIN TRANSACTION;
 SET last_process_time = (SELECT MAX(process_time) FROM `${process_watermark_table}`);
 SET new_process_time = CURRENT_TIMESTAMP();
 
+-- Notice single quotes and not backticks. This function expects a string, not identifier, as the parameter
+CALL BQ.REFRESH_EXTERNAL_METADATA_CACHE('${images_table}');
+
 CREATE TEMP TABLE new_reports AS
 SELECT
     GENERATE_UUID() as report_id,
     uri,
     updated,
-    '${multimodal_model}' AS model_used,
+    '${multimodal_model_id}' AS model_used,
     (SELECT value FROM UNNEST(metadata) WHERE name = 'stop_id') AS bus_stop_id,
     CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.cleanliness_level') AS INT64) AS cleanliness_level,
     JSON_EXTRACT(ml_generate_text_llm_result, '$.description') AS description,
@@ -27,7 +30,7 @@ FROM
               The bus stops are owned and operated by your company CleanSight.
               Analyze these pictures of bus stop images and provide accurate details around safety and cleanliness in and around the bus stop.
               A bus stop is comprised of any combination of the following physical assets: a bench, a sign, a shelter, and/or a trash can.
-              Return your answer in JSON format as follows. Do not include JSON decorators.
+              Return your answer in JSON format as follows. Remove JSON decorators from the response.
               {
                   "cleanliness_level": Integer, # Rate the cleanliness of this bus stop (From 0="Extremely dirty" to 10="Extremely clean"). Focus on littering and broken items.
     "description": String, # Details about what you see in the image in terms of cleanliness
@@ -38,25 +41,54 @@ FROM
                     2048 AS max_output_tokens,
                     TRUE AS FLATTEN_JSON_OUTPUT)
         )
-WHERE content_type = "image/jpeg" AND updated > last_process_time;
+WHERE content_type = "image/jpeg" AND updated BETWEEN last_process_time AND new_process_time;
+
+-- For production implementation a loop of re-processing failed predictions would be necessary.
+-- In this demo we use the fail-fast approach
+BEGIN
+  DECLARE first_failure DEFAULT
+    (SELECT CONCAT("At least one file failed to process: ", model_response_status, ", URI: ", uri)
+        FROM new_reports WHERE model_response_status != '' LIMIT 1);
+  IF NOT first_failure IS NULL THEN
+    RAISE USING MESSAGE=first_failure;
+  END IF;
+END;
 
 -- Insert new reports
-INSERT INTO `${reports_table}` (report_id, uri, image_created, model_used, bus_stop_id, cleanliness_level, description, number_of_people, is_bus_stop, model_response_status)
-SELECT report_id, uri, updated, model_used, bus_stop_id, cleanliness_level, description, number_of_people, is_bus_stop, model_response_status FROM new_reports;
+INSERT INTO `${reports_table}` (report_id, uri, image_created, model_used, bus_stop_id, cleanliness_level, description, number_of_people, is_bus_stop)
+SELECT report_id, uri, updated, model_used, bus_stop_id, cleanliness_level, description, number_of_people, is_bus_stop
+  FROM new_reports;
 
--- Generate text embeddings
-INSERT INTO `${text_embeddings_table}` (report_id, model_used, embedding, model_response_status)
+-- Generate multimodal embeddings
+CREATE TEMP TABLE new_multimodal_embeddings AS
 SELECT
-    report_id,
-    '${text_embeddings_model}',
+    uri,
     ml_generate_embedding_result AS embedding,
-    ml_generate_embedding_status AS status
+    ml_generate_embedding_status AS model_response_status
 FROM
     ML.GENERATE_EMBEDDING(
-            MODEL `${text_embedding_model}`,
-            (SELECT report_id, description as content FROM new_reports WHERE description IS NOT NULL),
-            STRUCT('SEMANTIC_SIMILARITY' as task_type)
+            MODEL `${multimodal_embedding_model}`,
+            -- Make sure that the WHERE clauses are identical in order to process the same data
+            (SELECT * FROM `${images_table}` WHERE content_type = "image/jpeg" AND updated BETWEEN last_process_time AND new_process_time )
         );
+
+-- TODO: verify that the set of URIs from both new_reports and new_multimodal_embeddings is the same.
+
+-- For production implementation a loop of re-processing failed predictions would be necessary.
+-- In this demo we use the fail-fast approach
+BEGIN
+  DECLARE first_failure DEFAULT
+    (SELECT CONCAT("At least one file failed to generate embeddings: ", model_response_status, ", URI: ", uri)
+        FROM new_multimodal_embeddings WHERE model_response_status != '' LIMIT 1);
+  IF NOT first_failure IS NULL THEN
+    RAISE USING MESSAGE=first_failure;
+  END IF;
+END;
+
+-- Insert new multimodal embeddings
+INSERT INTO `${multimodal_embeddings_table}` (report_id, model_used, embedding)
+SELECT report_id, '${multimodal_embeddings_model_id}', embedding FROM new_reports r, new_multimodal_embeddings e
+  WHERE r.uri = e.uri;
 
 -- Update the process time watermark
 UPDATE `${process_watermark_table}`

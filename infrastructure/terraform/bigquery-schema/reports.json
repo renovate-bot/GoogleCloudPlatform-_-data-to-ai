@@ -46,11 +46,6 @@
     "type": "BOOLEAN"
   },
   {
-    "mode": "NULLABLE",
-    "name": "model_response_status",
-    "type": "STRING"
-  },
-  {
     "mode": "REQUIRED",
     "name": "created_ts",
     "type": "TIMESTAMP",

@@ -70,6 +70,7 @@ resource "google_bigquery_table" "images" {
   deletion_protection = false
   dataset_id          = local.dataset_id
   table_id            = "images"
+  max_staleness       = "0-0 0 0:30:0"
   external_data_configuration {
     connection_id       = google_bigquery_connection.image_bucket_connection.id
     source_uris         = [format("gs://%s/images/*", google_storage_bucket.image_bucket.id)]
@@ -106,7 +107,7 @@ resource "google_bigquery_job" "reports_search_index" {
   depends_on = [google_bigquery_table.reports]
 
   query {
-    query = "CREATE SEARCH INDEX IF NOT EXISTS reports_search_index ON `${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}` (description)"
+    query              = "CREATE SEARCH INDEX IF NOT EXISTS reports_search_index ON `${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}` (description)"
     create_disposition = ""
     write_disposition  = ""
   }
@@ -228,6 +229,30 @@ resource "google_bigquery_table" "text_embeddings" {
   }
 }
 
+resource "google_bigquery_table" "multimodal_embeddings" {
+  deletion_protection = false
+  dataset_id          = local.dataset_id
+  table_id            = "multimodal_embeddings"
+  description         = "Multimodal mbeddings of images"
+  clustering          = ["report_id"]
+  schema              = file("${path.module}/bigquery-schema/multimodal_embeddings.json")
+
+  table_constraints {
+    foreign_keys {
+      name = "fk_multimodal_embeddings_reports"
+      referenced_table {
+        project_id = var.project_id
+        dataset_id = google_bigquery_dataset.bus-stop-image-processing.dataset_id
+        table_id   = google_bigquery_table.reports.table_id
+      }
+      column_references {
+        referencing_column = "report_id"
+        referenced_column  = "report_id"
+      }
+    }
+  }
+}
+
 data "local_file" "describe_image_prompt_config" {
   filename = "${path.module}/../../prompts/describe-image.prompt.yaml"
 }
@@ -235,9 +260,10 @@ data "local_file" "describe_image_prompt_config" {
 locals {
   prompt_config = yamldecode(data.local_file.describe_image_prompt_config.content)
 
-  default_model_name        = "default_model"
-  pro_model_name            = "pro_model"
-  text_embedding_model_name = "text_embedding_model"
+  default_model_name              = "default_model"
+  pro_model_name                  = "pro_model"
+  text_embedding_model_name       = "text_embedding_model"
+  multimodal_embedding_model_name = "multimodal_embedding_model"
 }
 
 resource "random_id" "default_model_job_id_suffix" {
@@ -317,6 +343,32 @@ END_OF_STATEMENT
   }
 }
 
+resource "random_id" "multimodal_embeddings_model_job_id_suffix" {
+  byte_length = 4
+  keepers     = {
+    model_name = var.multimodal_embeddings_vertex_ai_model
+  }
+}
+
+resource "google_bigquery_job" "create_multimodal_embedding_model" {
+  job_id     = "create_text_embedding_model_${random_id.multimodal_embeddings_model_job_id_suffix.hex}"
+  location   = var.bigquery_dataset_location
+  depends_on = [
+    google_project_service.vertex_ai_api,
+    google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user
+  ]
+  query {
+    query = <<END_OF_STATEMENT
+CREATE OR REPLACE MODEL `${var.project_id}.${local.dataset_id}.${local.multimodal_embedding_model_name}`
+  REMOTE WITH CONNECTION `${google_bigquery_connection.vertex_ai_connection.id}`
+  OPTIONS(ENDPOINT = '${var.multimodal_embeddings_vertex_ai_model}');
+END_OF_STATEMENT
+
+    create_disposition = ""
+    write_disposition  = ""
+  }
+}
+
 resource "google_bigquery_routine" "process_images_procedure" {
   dataset_id   = local.dataset_id
   routine_id   = "process_images"
@@ -326,25 +378,33 @@ resource "google_bigquery_routine" "process_images_procedure" {
   lifecycle {
     precondition {
       condition     = google_bigquery_job.create_default_model.status[0].state == "DONE" && length(google_bigquery_job.create_default_model.status[0].error_result) == 0
-      error_message = "BigQuery job creating the default model hasn't completed yet or failed. Wait until it completes successfully and re-run 'terraform apply'"
+      error_message = <<EOM
+BigQuery job creating the default model hasn't completed yet or failed.
+If the state is "RUNNING" - wait until it completes successfully and re-run 'terraform apply'"
+If the error_result is not empty - please execute ./force-rerunning-model-creation-scripts.sh and
+then re-run 'terraform apply'.
+EOM
     }
   }
   definition_body = templatefile("${path.module}/bigquery-routines/process-images.sql.tftpl", {
-    process_watermark_table = "${local.fq_dataset_id}.${google_bigquery_table.process_watermark.table_id}"
-    images_table            = "${local.fq_dataset_id}.${google_bigquery_table.images.table_id}"
-    reports_table           = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
-    text_embeddings_table   = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
-    text_embedding_model    = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
-    multimodal_model        = var.default_multimodal_vertex_ai_model
-    text_embeddings_model   = var.text_embeddings_vertex_ai_model
+    process_watermark_table        = "${local.fq_dataset_id}.${google_bigquery_table.process_watermark.table_id}"
+    images_table                   = "${local.fq_dataset_id}.${google_bigquery_table.images.table_id}"
+    reports_table                  = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+    text_embeddings_table          = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
+    text_embedding_model           = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
+    multimodal_embeddings_table    = "${local.fq_dataset_id}.${google_bigquery_table.multimodal_embeddings.table_id}"
+    multimodal_embedding_model     = "${local.fq_dataset_id}.${local.multimodal_embedding_model_name}"
+    multimodal_model_id            = var.default_multimodal_vertex_ai_model
+    text_embeddings_model_id       = var.text_embeddings_vertex_ai_model
+    multimodal_embeddings_model_id = var.multimodal_embeddings_vertex_ai_model
   })
 }
 
 resource "google_bigquery_routine" "semantic_text_search_tvf" {
-  dataset_id      = local.dataset_id
-  routine_id      = "semantic_text_search"
-  routine_type    = "TABLE_VALUED_FUNCTION"
-  language        = "SQL"
+  dataset_id   = local.dataset_id
+  routine_id   = "semantic_text_search"
+  routine_type = "TABLE_VALUED_FUNCTION"
+  language     = "SQL"
 
   lifecycle {
     precondition {
@@ -372,7 +432,7 @@ resource "google_bigquery_routine" "update_incidents_procedure" {
   language        = "SQL"
   definition_body = templatefile("${path.module}/bigquery-routines/update-incidents-procedure.sql.tftpl", {
     report_watermark_table = "${local.fq_dataset_id}.${google_bigquery_table.report_watermark.table_id}"
-    incidents_table            = "${local.fq_dataset_id}.${google_bigquery_table.incidents.table_id}"
-    reports_table           = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+    incidents_table        = "${local.fq_dataset_id}.${google_bigquery_table.incidents.table_id}"
+    reports_table          = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
   })
 }

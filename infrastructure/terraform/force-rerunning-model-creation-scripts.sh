@@ -22,3 +22,4 @@ set -u
 terraform taint random_id.text_embeddings_model_job_id_suffix
 terraform taint random_id.default_model_job_id_suffix
 terraform taint random_id.pro_model_job_id_suffix
+terraform taint random_id.multimodal_embeddings_model_job_id_suffix
