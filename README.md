@@ -103,8 +103,7 @@ terraform apply
 ```
 
 If the precondition fails with `"...state is "RUNNING"` message, please wait a few seconds and
-re-run
-`terraform apply` again.
+re-run `terraform apply` again.
 
 ## Created infrastructure artifacts
 
@@ -117,12 +116,14 @@ project:
     * `reports` table, containing the results of the image analysis
     * `incidents` table, containing the automatically detected bus stops requiring attention
     * `text_embeddings` table with the embeddings of the descriptions of the images
+    * `multimodal_embeddings` table with the embeddings of the images themselves
     * several tables with `_watermark` at the name suffix, which are used to track processing state
     * `process_images` stored procedure
     * `update_incidents` stored procedure
     * `semantic_text_search` table valued function
-    * `default_model`, `pro_model` and `text_embedding_model`, which refer to different Vertex AI
-      LLMs
+    * `semantic_multimodal_search` table valued function
+    * `default_model`, `pro_model`, `multimodal_embedding_model` and `text_embedding_model`, which
+      refer to different Vertex AI foundational models
 * `image-processing-invoker` Cloud Run function to run both `process_images` and `update_incidents`
   stored procedures
 * `run_bus_stop_image_processing` Cloud Schedule to run the invoker function
@@ -185,7 +186,7 @@ function:
 ```sql
 SELECT *
 FROM `bus_stop_image_processing.reports`
-WHERE SEARCH(description, "broken glass");
+WHERE SEARCH(description, "broken glass")
 ```
 
 ### Semantic search using text embeddings
@@ -208,11 +209,64 @@ semantically close the matches are.
 ### Semantic search using multimodal embeddings
 
 [Multimodal embeddings and search](https://cloud.google.com/bigquery/docs/generate-multimodal-embeddings)
-are very similar to creating text embeddings and searching them.
+is very similar to creating text embeddings and searching them.
 The primary difference is a different model used to generate the embeddings.
+
+```sql
+SELECT *
+FROM `bus_stop_image_processing.semantic_vector_search`("a bus stop with broken glass")
+ORDER BY distance
+```
 
 The majority of the bus stop image embeddings are very similar to each other when default
 embedding model is used. Vector searches can return a number of images with very similar distance.
+
+### Hybrid search
+
+You can use multiple ways to search the images and combine them by assigning weights to each type of
+search.
+For example, this query will attempt to find bus stops with broken glass:
+
+```sql
+DECLARE
+multimodal_coefficent DEFAULT 5.;
+DECLARE
+text_coefficient DEFAULT 7.;
+DECLARE
+full_text_weight DEFAULT 10.;
+
+WITH semantic_multimodal_search AS (SELECT uri,
+                                           distance
+                                    FROM
+                                        `bus_stop_image_processing.semantic_multimodal_search`("a bus stop with broken glass")),
+     semantic_text_search AS (SELECT uri,
+                                     distance
+                              FROM
+                                  `bus_stop_image_processing.semantic_text_search`("a bus stop with broken glass")),
+     full_text_search AS (SELECT uri
+                          FROM `bus_stop_image_processing.reports`
+                          WHERE SEARCH(description, "broken glass")),
+     combined_results AS (SELECT uri,
+                                 distance * multimodal_coefficent AS weight
+                          FROM semantic_multimodal_search
+                          UNION ALL
+                          SELECT uri,
+                                 distance * text_coefficient AS weight
+                          FROM semantic_text_search
+                          UNION ALL
+                          SELECT uri,
+                                 full_text_weight AS weight
+                          FROM full_text_search)
+SELECT uri,
+       SUM(weight) AS total_weight
+FROM combined_results
+GROUP BY uri
+ORDER BY total_weight DESC LIMIT 10
+```
+
+The exact coefficients and weights used in the query above would need to be adjusted based on
+testing of somewhat realistic set of images. The search terms used for each type of search can be
+improved based on testing.
 
 ## Cleanup
 

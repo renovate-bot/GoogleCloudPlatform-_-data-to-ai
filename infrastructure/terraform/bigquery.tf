@@ -369,6 +369,24 @@ END_OF_STATEMENT
   }
 }
 
+locals {
+  error_message_template     = <<EOM
+  BigQuery job creating the $${model_name} model hasn't completed yet or failed.
+If the state is "RUNNING" - wait until it completes successfully and re-run 'terraform apply'"
+If the error_result is not empty - please execute ./force-rerunning-model-creation-scripts.sh and
+then re-run 'terraform apply'.
+EOM
+  text_embedding_model_error = templatestring(local.error_message_template, {
+    model_name = "text embedding"
+  })
+  default_model_error = templatestring(local.error_message_template, {
+    model_name = "default"
+  })
+  multimodal_embedding_model_error = templatestring(local.error_message_template, {
+    model_name = "multimodal embedding"
+  })
+}
+
 resource "google_bigquery_routine" "process_images_procedure" {
   dataset_id   = local.dataset_id
   routine_id   = "process_images"
@@ -378,12 +396,7 @@ resource "google_bigquery_routine" "process_images_procedure" {
   lifecycle {
     precondition {
       condition     = google_bigquery_job.create_default_model.status[0].state == "DONE" && length(google_bigquery_job.create_default_model.status[0].error_result) == 0
-      error_message = <<EOM
-BigQuery job creating the default model hasn't completed yet or failed.
-If the state is "RUNNING" - wait until it completes successfully and re-run 'terraform apply'"
-If the error_result is not empty - please execute ./force-rerunning-model-creation-scripts.sh and
-then re-run 'terraform apply'.
-EOM
+      error_message = local.default_model_error
     }
   }
   definition_body = templatefile("${path.module}/bigquery-routines/process-images.sql.tftpl", {
@@ -409,7 +422,7 @@ resource "google_bigquery_routine" "semantic_text_search_tvf" {
   lifecycle {
     precondition {
       condition     = google_bigquery_job.create_text_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_text_embedding_model.status[0].error_result) == 0
-      error_message = "BigQuery job creating the text embedding model hasn't completed yet or failed. Wait until it completes successfully and re-run 'terraform apply'"
+      error_message = local.text_embedding_model_error
     }
   }
 
@@ -425,6 +438,33 @@ resource "google_bigquery_routine" "semantic_text_search_tvf" {
     data_type     = jsonencode({ "typeKind" : "STRING" })
   }
 }
+
+resource "google_bigquery_routine" "semantic_vector_search_tvf" {
+  dataset_id   = local.dataset_id
+  routine_id   = "semantic_multimodal_search"
+  routine_type = "TABLE_VALUED_FUNCTION"
+  language     = "SQL"
+
+  lifecycle {
+    precondition {
+      condition     = google_bigquery_job.create_multimodal_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_multimodal_embedding_model.status[0].error_result) == 0
+      error_message = local.multimodal_embedding_model_error
+    }
+  }
+
+  definition_body = templatefile("${path.module}/bigquery-routines/semantic-multimodal-search.sql.tftpl", {
+    multimodal_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.multimodal_embeddings.table_id}"
+    multimodal_embedding_model  = "${local.fq_dataset_id}.${local.multimodal_embedding_model_name}"
+    reports_table               = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+    max_number_of_results       = 10
+  })
+  arguments {
+    name          = "search_terms"
+    argument_kind = "FIXED_TYPE"
+    data_type     = jsonencode({ "typeKind" : "STRING" })
+  }
+}
+
 resource "google_bigquery_routine" "update_incidents_procedure" {
   dataset_id      = local.dataset_id
   routine_id      = "update_incidents"
