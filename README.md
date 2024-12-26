@@ -174,7 +174,7 @@ to simulate transmission of bus stop images from several buses.
 
 ## Searching images
 
-There are multiple ways to search for images using BigQuery's SQL.
+There are multiple ways to search images using BigQuery's SQL.
 
 ### Full text search
 
@@ -185,8 +185,8 @@ function:
 
 ```sql
 SELECT *
-FROM `bus_stop_image_processing.reports`
-WHERE SEARCH(description, "broken glass")
+    FROM `bus_stop_image_processing.reports`
+    WHERE SEARCH(description, "broken glass")
 ```
 
 ### Semantic search using text embeddings
@@ -198,8 +198,8 @@ against the generated text embeddings:
 
 ```sql
 SELECT *
-FROM `bus_stop_image_processing.semantic_text_search`("a bus stop with broken glass")
-ORDER BY distance
+    FROM `bus_stop_image_processing.semantic_text_search`("a bus stop with broken glass")
+    ORDER BY distance
 ```
 
 The current implementation of the function is hardcoded to return top 10 closest matches (records
@@ -214,8 +214,8 @@ The primary difference is a different model used to generate the embeddings.
 
 ```sql
 SELECT *
-FROM `bus_stop_image_processing.semantic_vector_search`("a bus stop with broken glass")
-ORDER BY distance
+    FROM `bus_stop_image_processing.semantic_vector_search`("a bus stop with broken glass")
+    ORDER BY distance
 ```
 
 The majority of the bus stop image embeddings are very similar to each other when default
@@ -229,44 +229,49 @@ For example, this query will attempt to find bus stops with broken glass:
 
 ```sql
 DECLARE
-multimodal_coefficent DEFAULT 5.;
+    multimodal_coefficent DEFAULT 5.;
 DECLARE
-text_coefficient DEFAULT 7.;
+    text_coefficient DEFAULT 7.;
 DECLARE
-full_text_weight DEFAULT 10.;
+    full_text_weight DEFAULT 10.;
 
-WITH semantic_multimodal_search AS (SELECT uri,
-                                           distance
-                                    FROM
-                                        `bus_stop_image_processing.semantic_multimodal_search`("a bus stop with broken glass")),
-     semantic_text_search AS (SELECT uri,
-                                     distance
-                              FROM
-                                  `bus_stop_image_processing.semantic_text_search`("a bus stop with broken glass")),
-     full_text_search AS (SELECT uri
-                          FROM `bus_stop_image_processing.reports`
-                          WHERE SEARCH(description, "broken glass")),
-     combined_results AS (SELECT uri,
-                                 distance * multimodal_coefficent AS weight
-                          FROM semantic_multimodal_search
-                          UNION ALL
-                          SELECT uri,
-                                 distance * text_coefficient AS weight
-                          FROM semantic_text_search
-                          UNION ALL
-                          SELECT uri,
-                                 full_text_weight AS weight
-                          FROM full_text_search)
-SELECT uri,
-       SUM(weight) AS total_weight
-FROM combined_results
-GROUP BY uri
-ORDER BY total_weight DESC LIMIT 10
+WITH 
+semantic_multimodal_search AS (
+    SELECT uri, distance
+        FROM `bus_stop_image_processing.semantic_multimodal_search`("a bus stop with broken glass")),
+semantic_text_search AS (
+    SELECT uri, distance
+        FROM `bus_stop_image_processing.semantic_text_search`("a bus stop with broken glass")),
+full_text_search AS (
+    SELECT uri
+        FROM `bus_stop_image_processing.reports`
+        WHERE SEARCH(description, "broken glass")),
+combined_results AS (
+    SELECT uri, multimodal_coefficent/distance  AS weight FROM semantic_multimodal_search
+        UNION ALL
+    SELECT uri, text_coefficient/distance AS weight FROM semantic_text_search
+        UNION ALL
+    SELECT uri, full_text_weight AS weight FROM full_text_search)
+SELECT uri, SUM(weight) AS total_weight
+    FROM combined_results
+    GROUP BY uri
+    ORDER BY total_weight DESC LIMIT 10
 ```
 
 The exact coefficients and weights used in the query above would need to be adjusted based on
 testing of somewhat realistic set of images. The search terms used for each type of search can be
 improved based on testing.
+
+Notice that we divided the coefficients by the distances from both text and multimodal semantic 
+searches. This is because the smaller the distance the more relevant the result of the vector search. 
+The minimum and maximum values of the distances depend on the distance type used by the vector search.
+For additional details refer to [VECTOR_SEARCH](https://cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search)
+documentation.
+
+### Vector indexes
+This repo doesn't create [vector indexes](https://cloud.google.com/bigquery/docs/vector-index) automatically. Vector indexes can be created only if 
+the table to be indexed contains at least 5,000 records. It's highly recommended to add the indexes 
+in production environment to optimize vector search performance.
 
 ## Cleanup
 
