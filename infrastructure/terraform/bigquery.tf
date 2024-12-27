@@ -410,6 +410,9 @@ resource "google_bigquery_routine" "process_images_procedure" {
     multimodal_model_id            = var.default_multimodal_vertex_ai_model
     text_embeddings_model_id       = var.text_embeddings_vertex_ai_model
     multimodal_embeddings_model_id = var.multimodal_embeddings_vertex_ai_model
+    prompt                         = local.prompt_config.prompt
+    temperature                    = local.prompt_config.temperature
+    max_output_tokens              = local.prompt_config.max_output_tokens
   })
 }
 

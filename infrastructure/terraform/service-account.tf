@@ -57,6 +57,9 @@ resource "google_bigquery_table_iam_member" "data_processor_sa_bigquery_editor" 
     "incidents" = google_bigquery_table.incidents.id,
     "text_embeddings" = google_bigquery_table.text_embeddings.id,
     "multimodal_embeddings" = google_bigquery_table.multimodal_embeddings.id,
+    # Even though this is a read-only table, bigquery.tables.updateData permission
+    # is needed to refresh metadata
+    "images" = google_bigquery_table.images.id
   })
   table_id = each.value
 }

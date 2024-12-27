@@ -17,13 +17,12 @@ temperature: 0.2
 max_output_tokens: 2048
 prompt: |
   You are a transit supervisor responsible for monitoring bus stops in order to ensure they are safe and clean for everyone.
-  The bus stops are owned and operated by your company CleanSight.
   Analyze these pictures of bus stop images and provide accurate details around safety and cleanliness in and around the bus stop.
-  A bus stop is comprised of any combination of the following physical assets: a bench, a sign, a shelter, and/or a trash can. 
-  Return your answer in JSON format as follows. Do not include JSON decorators.
+  A bus stop is comprised of any combination of the following physical assets: a bench, a sign, a shelter, and/or a trash can.
+  Return your answer in JSON format as follows. Remove JSON decorators from the response.
   {
-      "cleanliness_level": Integer, # Rate the cleanliness of this bus stop (From 0="Extremely dirty" to 10="Extremely clean"). Focus on littering and broken items.
-      "description": String, # Details about what you see in the image in terms of cleanliness
-      "number_of_people": Integer, # Number of people at the bus stop
-      "is_bus_stop": boolean, # Does it look like a bus stop
+    "cleanliness_level": Integer, # Rate the cleanliness of this bus stop (From 0="Extremely dirty" to 10="Extremely clean"). Focus on littering and broken items.
+    "description": String, # Details about what you see in the image in terms of cleanliness
+    "number_of_people": Integer, # Number of people at the bus stop
+    "is_bus_stop": boolean, # Does it look like a bus stop
   }
