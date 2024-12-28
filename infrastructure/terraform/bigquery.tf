@@ -45,28 +45,56 @@ locals {
   fq_dataset_id              = "${var.project_id}.${google_bigquery_dataset.bus-stop-image-processing.dataset_id}"
 }
 
+resource "time_sleep" "wait_for_propagation_of_bucket_connection_sa" {
+  depends_on = [google_bigquery_connection.image_bucket_connection]
+  create_duration = "30s"
+
+  triggers = {
+    connection_sa = google_bigquery_connection.image_bucket_connection.cloud_resource[0].service_account_id
+  }
+}
+
 resource "google_storage_bucket_iam_member" "image_bucket_connection_sa_bucket_viewer" {
   bucket     = google_storage_bucket.image_bucket.name
   role       = "roles/storage.objectViewer"
   member     = local.image_bucket_connection_sa
-  depends_on = [google_bigquery_connection.image_bucket_connection]
+  depends_on = [time_sleep.wait_for_propagation_of_bucket_connection_sa]
 }
 
 resource "google_project_iam_member" "image_bucket_connection_sa_vertex_ai_user" {
   project    = var.project_id
   role       = "roles/aiplatform.user"
   member     = local.image_bucket_connection_sa
-  depends_on = [google_bigquery_connection.image_bucket_connection]
+  depends_on = [time_sleep.wait_for_propagation_of_bucket_connection_sa]
+}
+
+resource "time_sleep" "wait_for_propagation_of_vertex_ai_connection_sa" {
+  depends_on = [google_bigquery_connection.vertex_ai_connection]
+  create_duration = "30s"
+
+  triggers = {
+    connection_sa = google_bigquery_connection.vertex_ai_connection.cloud_resource[0].service_account_id
+  }
 }
 
 resource "google_project_iam_member" "vertex_ai_connection_sa_vertex_ai_user" {
   project    = var.project_id
   role       = "roles/aiplatform.user"
   member     = local.vertex_ai_connection_sa
-  depends_on = [google_bigquery_connection.image_bucket_connection]
+  depends_on = [time_sleep.wait_for_propagation_of_vertex_ai_connection_sa]
+}
+
+resource "time_sleep" "wait_for_propagation_of_vertex_ai_connection_permission" {
+  depends_on = [google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user]
+  create_duration = "30s"
+
+  triggers = {
+    connection_sa = google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user.member
+  }
 }
 
 resource "google_bigquery_table" "images" {
+  description         = "Object table to access bus stop images"
   deletion_protection = false
   dataset_id          = local.dataset_id
   table_id            = "images"
@@ -84,7 +112,7 @@ resource "google_bigquery_table" "reports" {
   deletion_protection = false
   dataset_id          = local.dataset_id
   table_id            = "reports"
-  description         = "Results of data extraction for an individual image"
+  description         = "Results of attribute extraction for an individual image"
   clustering          = ["bus_stop_id"]
   schema              = file("${path.module}/bigquery-schema/reports.json")
 
@@ -278,7 +306,7 @@ resource "google_bigquery_job" "create_default_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user
+    time_sleep.wait_for_propagation_of_vertex_ai_connection_sa
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -289,6 +317,33 @@ END_OF_STATEMENT
 
     create_disposition = ""
     write_disposition  = ""
+  }
+}
+
+resource "time_sleep" "wait_for_default_model_creation" {
+  depends_on      = [google_bigquery_job.create_default_model]
+  create_duration = "30s"
+
+  triggers = {
+    job_id = google_bigquery_job.create_default_model.job_id
+  }
+}
+
+resource "time_sleep" "wait_for_text_embedding_model_creation" {
+  depends_on      = [google_bigquery_job.create_text_embedding_model]
+  create_duration = "30s"
+
+  triggers = {
+    job_id = google_bigquery_job.create_text_embedding_model.job_id
+  }
+}
+
+resource "time_sleep" "wait_for_multimodal_embedding_model_creation" {
+  depends_on      = [google_bigquery_job.create_multimodal_embedding_model]
+  create_duration = "30s"
+
+  triggers = {
+    job_id = google_bigquery_job.create_multimodal_embedding_model.job_id
   }
 }
 
@@ -303,7 +358,7 @@ resource "google_bigquery_job" "create_pro_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    google_project_iam_member.image_bucket_connection_sa_vertex_ai_user
+    time_sleep.wait_for_propagation_of_vertex_ai_connection_sa
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -329,7 +384,7 @@ resource "google_bigquery_job" "create_text_embedding_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user
+    time_sleep.wait_for_propagation_of_vertex_ai_connection_sa
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -355,7 +410,7 @@ resource "google_bigquery_job" "create_multimodal_embedding_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user
+    time_sleep.wait_for_propagation_of_vertex_ai_connection_sa
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -392,13 +447,17 @@ resource "google_bigquery_routine" "process_images_procedure" {
   routine_id   = "process_images"
   routine_type = "PROCEDURE"
   language     = "SQL"
-  depends_on   = [google_bigquery_job.create_default_model]
-  lifecycle {
-    precondition {
-      condition     = google_bigquery_job.create_default_model.status[0].state == "DONE" && length(google_bigquery_job.create_default_model.status[0].error_result) == 0
-      error_message = local.default_model_error
-    }
-  }
+  depends_on   = [
+    time_sleep.wait_for_default_model_creation,
+    time_sleep.wait_for_text_embedding_model_creation,
+    time_sleep.wait_for_multimodal_embedding_model_creation
+  ]
+  #  lifecycle {
+  #    precondition {
+  #      condition     = google_bigquery_job.create_default_model.status[0].state == "DONE" && length(google_bigquery_job.create_default_model.status[0].error_result) == 0
+  #      error_message = local.default_model_error
+  #    }
+  #  }
   definition_body = templatefile("${path.module}/bigquery-routines/process-images.sql.tftpl", {
     process_watermark_table        = "${local.fq_dataset_id}.${google_bigquery_table.process_watermark.table_id}"
     images_table                   = "${local.fq_dataset_id}.${google_bigquery_table.images.table_id}"
@@ -422,12 +481,14 @@ resource "google_bigquery_routine" "semantic_text_search_tvf" {
   routine_type = "TABLE_VALUED_FUNCTION"
   language     = "SQL"
 
-  lifecycle {
-    precondition {
-      condition     = google_bigquery_job.create_text_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_text_embedding_model.status[0].error_result) == 0
-      error_message = local.text_embedding_model_error
-    }
-  }
+  depends_on = [time_sleep.wait_for_text_embedding_model_creation]
+
+#  lifecycle {
+#    precondition {
+#      condition     = google_bigquery_job.create_text_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_text_embedding_model.status[0].error_result) == 0
+#      error_message = local.text_embedding_model_error
+#    }
+#  }
 
   definition_body = templatefile("${path.module}/bigquery-routines/semantic-text-search.sql.tftpl", {
     text_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
@@ -442,18 +503,20 @@ resource "google_bigquery_routine" "semantic_text_search_tvf" {
   }
 }
 
-resource "google_bigquery_routine" "semantic_vector_search_tvf" {
+resource "google_bigquery_routine" "semantic_multimodal_search_tvf" {
   dataset_id   = local.dataset_id
   routine_id   = "semantic_multimodal_search"
   routine_type = "TABLE_VALUED_FUNCTION"
   language     = "SQL"
 
-  lifecycle {
-    precondition {
-      condition     = google_bigquery_job.create_multimodal_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_multimodal_embedding_model.status[0].error_result) == 0
-      error_message = local.multimodal_embedding_model_error
-    }
-  }
+  depends_on = [time_sleep.wait_for_multimodal_embedding_model_creation]
+
+#  lifecycle {
+#    precondition {
+#      condition     = google_bigquery_job.create_multimodal_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_multimodal_embedding_model.status[0].error_result) == 0
+#      error_message = local.multimodal_embedding_model_error
+#    }
+#  }
 
   definition_body = templatefile("${path.module}/bigquery-routines/semantic-multimodal-search.sql.tftpl", {
     multimodal_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.multimodal_embeddings.table_id}"

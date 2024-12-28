@@ -1,0 +1,15 @@
+gs://bus-stop-images/julien/notebook-sources/ND-02.jpg ND
+gs://bus-stop-images/julien/notebook-sources/MB-01-ice-snow.jpg MB
+gs://bus-stop-images/julien/notebook-sources/NC-01-dirty.jpg NC
+gs://bus-stop-images/julien/notebook-sources/MA-02.jpg MA
+gs://bus-stop-images/julien/notebook-sources/SC-02.jpg SC
+gs://bus-stop-images/julien/notebook-sources/PB-02.jpg PB
+gs://bus-stop-images/julien/notebook-sources/TA-01-graffitis.jpg TA
+gs://bus-stop-images/julien/notebook-sources/UA-01.jpg UA
+gs://bus-stop-images/julien/notebook-sources/UC-02-dirty.jpg UC
+gs://bus-stop-images/julien/notebook-sources/MC-02.jpg MC
+gs://bus-stop-images/julien/notebook-sources/NA-01-ice-snow.jpg NA
+gs://bus-stop-images/julien/notebook-sources/MA-02-broken-glass.jpg MA
+gs://bus-stop-images/julien/notebook-sources/UC-02.jpg UC
+gs://bus-stop-images/julien/notebook-sources/TC-02.jpg TC
+gs://bus-stop-images/julien/notebook-sources/NB-01.jpg NB

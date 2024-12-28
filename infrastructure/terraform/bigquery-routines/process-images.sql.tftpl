@@ -6,7 +6,7 @@ BEGIN TRANSACTION;
 SET last_process_time = (SELECT MAX(process_time) FROM `${process_watermark_table}`);
 SET new_process_time = CURRENT_TIMESTAMP();
 
--- Notice single quotes and not backticks. This function expects a string, not identifier, as the parameter
+-- Notice single quotes and not backticks. This function expects a string, not an identifier, as the parameter
 CALL BQ.REFRESH_EXTERNAL_METADATA_CACHE('${images_table}');
 
 CREATE TEMP TABLE new_reports AS

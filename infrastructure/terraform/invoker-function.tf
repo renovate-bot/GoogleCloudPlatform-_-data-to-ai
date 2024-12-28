@@ -37,6 +37,8 @@ resource "google_cloudfunctions2_function" "processing_invoker" {
     google_project_service.functions_api,
     google_project_service.cloudbuild_api,
     google_project_service.cloudscheduler,
+    google_bigquery_routine.process_images_procedure,
+    google_bigquery_routine.update_incidents_procedure
   ]
   name     = "image-processing-invoker"
   project  = var.project_id
