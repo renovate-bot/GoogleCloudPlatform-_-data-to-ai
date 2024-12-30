@@ -1,5 +1,5 @@
 DECLARE last_process_time TIMESTAMP;
-DECLARE new_process_time TIMESTAMP;
+DECLARE now TIMESTAMP;
 
 -- Notice single quotes and not backticks. This function expects a string, not an identifier, as the parameter
 CALL BQ.REFRESH_EXTERNAL_METADATA_CACHE('${images_table}');
@@ -7,7 +7,7 @@ CALL BQ.REFRESH_EXTERNAL_METADATA_CACHE('${images_table}');
 BEGIN TRANSACTION;
 
 SET last_process_time = (SELECT MAX(process_time) FROM `${process_watermark_table}`);
-SET new_process_time = CURRENT_TIMESTAMP();
+SET now = CURRENT_TIMESTAMP();
 
 CREATE TEMP TABLE new_reports AS
 WITH llm_response AS (
@@ -27,7 +27,7 @@ FROM
            ${max_output_tokens} AS max_output_tokens,
            TRUE AS flatten_json_output)
         )
-    WHERE content_type = "image/jpeg" AND updated BETWEEN last_process_time AND new_process_time
+    WHERE content_type = "image/jpeg" AND updated > last_process_time AND updated < now
 )
 SELECT
     GENERATE_UUID() as report_id,
@@ -85,7 +85,7 @@ FROM
     ML.GENERATE_EMBEDDING(
             MODEL `${multimodal_embedding_model}`,
             -- Make sure that the WHERE clauses are identical in order to process the same data
-            (SELECT * FROM `${images_table}` WHERE content_type = "image/jpeg" AND updated BETWEEN last_process_time AND new_process_time )
+            (SELECT * FROM `${images_table}` WHERE content_type = "image/jpeg" AND updated > last_process_time AND updated < now)
         );
 
 -- TODO: verify that the set of URIs from both new_reports and new_multimodal_embeddings is the same.
@@ -109,11 +109,13 @@ SELECT report_id, '${multimodal_embeddings_model_id}', embedding FROM new_report
 -- We can miss the files arrived between the cache refresh and the time new_process_time was set.
 -- It's also possible to set this time to the timestamp of the latest successfully processed image
 -- and not fail the whole transaction.
-SET new_process_time = (SELECT MAX(updated) FROM new_reports);
+SET last_process_time = (SELECT MAX(updated) FROM new_reports);
 
--- Update the process time watermark
-UPDATE `${process_watermark_table}`
-SET process_time = new_process_time
-WHERE TRUE;
+IF NOT last_process_time IS NULL THEN
+  -- Update the process time watermark if we processed any of the images
+  UPDATE `${process_watermark_table}`
+  SET process_time = last_process_time
+  WHERE TRUE;
+END IF;
 
 COMMIT TRANSACTION;
