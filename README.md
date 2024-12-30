@@ -92,18 +92,14 @@ terraform apply
 There is a chance you will get an error when creating a Cloud Run function the first time you run
 the script. Wait for a few minutes and try again.
 
-You might also get a transient error "Resource precondition failed" related to creating BigQuery
-models. If the error message indicates that "...error_result is list of object with 1 element" then
-the model creation failed (due to a transient error related to a service account's permissions).
+You might also get a transient error "Error creating Routine: googleapi: Error 404: Not found: Model ..."  then
+a BigQuery model creation failed (due to a transient error related to a service account's permissions).
 Run this script to force re-running the SQL statements which create the models:
 
 ```shell
 ./force-rerunning-model-creation-scripts.sh 
 terraform apply
 ```
-
-If the precondition fails with `"...state is "RUNNING"` message, please wait a few seconds and
-re-run `terraform apply` again.
 
 ## Created infrastructure artifacts
 
