@@ -47,7 +47,7 @@ locals {
 
 resource "time_sleep" "wait_for_propagation_of_bucket_connection_sa" {
   depends_on      = [google_bigquery_connection.image_bucket_connection]
-  create_duration = "30s"
+  create_duration = "45s"
 
   triggers = {
     connection_sa = google_bigquery_connection.image_bucket_connection.cloud_resource[0].service_account_id
@@ -70,7 +70,7 @@ resource "google_project_iam_member" "image_bucket_connection_sa_vertex_ai_user"
 
 resource "time_sleep" "wait_for_propagation_of_vertex_ai_connection_sa" {
   depends_on      = [google_bigquery_connection.vertex_ai_connection]
-  create_duration = "30s"
+  create_duration = "60s"
 
   triggers = {
     connection_sa = google_bigquery_connection.vertex_ai_connection.cloud_resource[0].service_account_id
@@ -86,7 +86,7 @@ resource "google_project_iam_member" "vertex_ai_connection_sa_vertex_ai_user" {
 
 resource "time_sleep" "wait_for_propagation_of_vertex_ai_connection_permission" {
   depends_on      = [google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user]
-  create_duration = "30s"
+  create_duration = "60s"
 
   triggers = {
     connection_sa = google_project_iam_member.vertex_ai_connection_sa_vertex_ai_user.member
@@ -306,7 +306,7 @@ resource "google_bigquery_job" "create_default_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    time_sleep.wait_for_propagation_of_vertex_ai_connection_sa
+    time_sleep.wait_for_propagation_of_vertex_ai_connection_permission
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -321,19 +321,15 @@ END_OF_STATEMENT
 }
 
 resource "time_sleep" "wait_for_default_model_creation" {
-  depends_on      = [google_bigquery_job.create_default_model]
-  create_duration = "30s"
+  create_duration = "45s"
 
   triggers = {
     job_id = google_bigquery_job.create_default_model.job_id
-    state = google_bigquery_job.create_default_model.status[0].state
-    error_message = join(",", google_bigquery_job.create_default_model.status[0].error_result[*].message)
   }
 }
 
 resource "time_sleep" "wait_for_text_embedding_model_creation" {
-  depends_on      = [google_bigquery_job.create_text_embedding_model]
-  create_duration = "30s"
+  create_duration = "45s"
 
   triggers = {
     job_id = google_bigquery_job.create_text_embedding_model.job_id
@@ -342,7 +338,7 @@ resource "time_sleep" "wait_for_text_embedding_model_creation" {
 
 resource "time_sleep" "wait_for_multimodal_embedding_model_creation" {
   depends_on      = [google_bigquery_job.create_multimodal_embedding_model]
-  create_duration = "30s"
+  create_duration = "45s"
 
   triggers = {
     job_id = google_bigquery_job.create_multimodal_embedding_model.job_id
@@ -360,7 +356,7 @@ resource "google_bigquery_job" "create_pro_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    time_sleep.wait_for_propagation_of_vertex_ai_connection_sa
+    time_sleep.wait_for_propagation_of_vertex_ai_connection_permission
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -386,7 +382,7 @@ resource "google_bigquery_job" "create_text_embedding_model" {
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    time_sleep.wait_for_propagation_of_vertex_ai_connection_sa
+    time_sleep.wait_for_propagation_of_vertex_ai_connection_permission
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -408,11 +404,11 @@ resource "random_id" "multimodal_embeddings_model_job_id_suffix" {
 }
 
 resource "google_bigquery_job" "create_multimodal_embedding_model" {
-  job_id     = "create_text_embedding_model_${random_id.multimodal_embeddings_model_job_id_suffix.hex}"
+  job_id     = "create_multimodal_embedding_model_${random_id.multimodal_embeddings_model_job_id_suffix.hex}"
   location   = var.bigquery_dataset_location
   depends_on = [
     google_project_service.vertex_ai_api,
-    time_sleep.wait_for_propagation_of_vertex_ai_connection_sa
+    time_sleep.wait_for_propagation_of_vertex_ai_connection_permission
   ]
   query {
     query = <<END_OF_STATEMENT
@@ -426,22 +422,20 @@ END_OF_STATEMENT
   }
 }
 
-locals {
-  error_message_template     = <<EOM
-  BigQuery job creating the $${model_name} model hasn't completed yet or failed.
-If the state is "RUNNING" - wait until it completes successfully and re-run 'terraform apply'"
-If the error_result is not empty - please execute ./force-rerunning-model-creation-scripts.sh and
-then re-run 'terraform apply'.
-EOM
-  text_embedding_model_error = templatestring(local.error_message_template, {
-    model_name = "text embedding"
-  })
-  default_model_error = templatestring(local.error_message_template, {
-    model_name = "default"
-  })
-  multimodal_embedding_model_error = templatestring(local.error_message_template, {
-    model_name = "multimodal embedding"
-  })
+resource "google_bigquery_routine" "clean_generate_text_json_response_function" {
+  dataset_id   = local.dataset_id
+  routine_id   = "clean_generate_text_json_response"
+  routine_type = "SCALAR_FUNCTION"
+  language     = "SQL"
+
+  definition_body = file("${path.module}/bigquery-routines/clean-generate-text-json-response.sql.tftpl")
+
+  arguments {
+    name      = "input"
+    data_type = "{\"typeKind\" :  \"STRING\"}"
+  }
+  return_type = "{\"typeKind\" :  \"STRING\"}"
+
 }
 
 resource "google_bigquery_routine" "process_images_procedure" {
@@ -452,28 +446,25 @@ resource "google_bigquery_routine" "process_images_procedure" {
   depends_on   = [
     time_sleep.wait_for_default_model_creation,
     time_sleep.wait_for_text_embedding_model_creation,
-    time_sleep.wait_for_multimodal_embedding_model_creation
+    time_sleep.wait_for_multimodal_embedding_model_creation,
+    google_bigquery_routine.clean_generate_text_json_response_function
   ]
-  lifecycle {
-    precondition {
-      condition     = time_sleep.wait_for_default_model_creation.triggers["state"] == "DONE" && length(time_sleep.wait_for_default_model_creation.triggers["error_message"]) == 0
-      error_message = local.default_model_error
-    }
-  }
+
   definition_body = templatefile("${path.module}/bigquery-routines/process-images.sql.tftpl", {
-    process_watermark_table        = "${local.fq_dataset_id}.${google_bigquery_table.process_watermark.table_id}"
-    images_table                   = "${local.fq_dataset_id}.${google_bigquery_table.images.table_id}"
-    reports_table                  = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
-    text_embeddings_table          = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
-    text_embedding_model           = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
-    multimodal_embeddings_table    = "${local.fq_dataset_id}.${google_bigquery_table.multimodal_embeddings.table_id}"
-    multimodal_embedding_model     = "${local.fq_dataset_id}.${local.multimodal_embedding_model_name}"
-    multimodal_model_id            = var.default_multimodal_vertex_ai_model
-    text_embeddings_model_id       = var.text_embeddings_vertex_ai_model
-    multimodal_embeddings_model_id = var.multimodal_embeddings_vertex_ai_model
-    prompt                         = local.prompt_config.prompt
-    temperature                    = local.prompt_config.temperature
-    max_output_tokens              = local.prompt_config.max_output_tokens
+    process_watermark_table           = "${local.fq_dataset_id}.${google_bigquery_table.process_watermark.table_id}"
+    images_table                      = "${local.fq_dataset_id}.${google_bigquery_table.images.table_id}"
+    reports_table                     = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+    text_embeddings_table             = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
+    text_embedding_model              = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
+    multimodal_embeddings_table       = "${local.fq_dataset_id}.${google_bigquery_table.multimodal_embeddings.table_id}"
+    multimodal_embedding_model        = "${local.fq_dataset_id}.${local.multimodal_embedding_model_name}"
+    multimodal_model_id               = var.default_multimodal_vertex_ai_model
+    text_embeddings_model_id          = var.text_embeddings_vertex_ai_model
+    multimodal_embeddings_model_id    = var.multimodal_embeddings_vertex_ai_model
+    prompt                            = local.prompt_config.prompt
+    temperature                       = local.prompt_config.temperature
+    max_output_tokens                 = local.prompt_config.max_output_tokens
+    clean_generate_text_json_function = "${local.fq_dataset_id}.${google_bigquery_routine.clean_generate_text_json_response_function.routine_id}"
   })
 }
 
@@ -484,13 +475,6 @@ resource "google_bigquery_routine" "semantic_text_search_tvf" {
   language     = "SQL"
 
   depends_on = [time_sleep.wait_for_text_embedding_model_creation]
-
-  lifecycle {
-    precondition {
-      condition     = google_bigquery_job.create_text_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_text_embedding_model.status[0].error_result) == 0
-      error_message = local.text_embedding_model_error
-    }
-  }
 
   definition_body = templatefile("${path.module}/bigquery-routines/semantic-text-search.sql.tftpl", {
     text_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
@@ -512,13 +496,6 @@ resource "google_bigquery_routine" "semantic_multimodal_search_tvf" {
   language     = "SQL"
 
   depends_on = [time_sleep.wait_for_multimodal_embedding_model_creation]
-
-  lifecycle {
-    precondition {
-      condition     = google_bigquery_job.create_multimodal_embedding_model.status[0].state == "DONE" && length(google_bigquery_job.create_multimodal_embedding_model.status[0].error_result) == 0
-      error_message = local.multimodal_embedding_model_error
-    }
-  }
 
   definition_body = templatefile("${path.module}/bigquery-routines/semantic-multimodal-search.sql.tftpl", {
     multimodal_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.multimodal_embeddings.table_id}"

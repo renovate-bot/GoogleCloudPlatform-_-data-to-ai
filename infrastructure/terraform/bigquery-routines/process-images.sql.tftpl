@@ -10,28 +10,39 @@ SET last_process_time = (SELECT MAX(process_time) FROM `${process_watermark_tabl
 SET new_process_time = CURRENT_TIMESTAMP();
 
 CREATE TEMP TABLE new_reports AS
+WITH llm_response AS (
+SELECT uri,
+       updated,
+       ml_generate_text_llm_result AS raw_response,
+       `${clean_generate_text_json_function}`(ml_generate_text_llm_result) as cleaned_response,
+       (SELECT value FROM UNNEST(metadata) WHERE name = 'stop_id') AS bus_stop_id,
+       ml_generate_text_status AS model_response_status
+FROM
+    ML.GENERATE_TEXT(
+        MODEL `event-processing-demo.bus_stop_image_processing.default_model`,
+        TABLE `${images_table}`,
+        STRUCT (
+           """${prompt}""" AS prompt,
+           ${temperature} AS temperature,
+           ${max_output_tokens} AS max_output_tokens,
+           TRUE AS flatten_json_output)
+        )
+    WHERE content_type = "image/jpeg" AND updated BETWEEN last_process_time AND new_process_time
+)
 SELECT
     GENERATE_UUID() as report_id,
     uri,
     updated,
     '${multimodal_model_id}' AS model_used,
-    (SELECT value FROM UNNEST(metadata) WHERE name = 'stop_id') AS bus_stop_id,
-    CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.cleanliness_level') AS INT64) AS cleanliness_level,
-    JSON_EXTRACT(ml_generate_text_llm_result, '$.description') AS description,
-    CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.is_bus_stop') AS BOOL) AS is_bus_stop,
-    CAST (JSON_EXTRACT(ml_generate_text_llm_result, '$.number_of_people') AS INT64) AS number_of_people,
-    ml_generate_text_status AS model_response_status
-FROM
-    ML.GENERATE_TEXT(
-            MODEL `event-processing-demo.bus_stop_image_processing.default_model`,
-        TABLE `${images_table}`,
-            STRUCT (
-           """${prompt}""" AS prompt,
-           ${temperature} AS temperature,
-           ${max_output_tokens} AS max_output_tokens,
-           TRUE AS FLATTEN_JSON_OUTPUT)
-        )
-WHERE content_type = "image/jpeg" AND updated BETWEEN last_process_time AND new_process_time;
+    model_response_status,
+    raw_response,
+    cleaned_response,
+    bus_stop_id,
+    CAST (JSON_EXTRACT(cleaned_response, '$.cleanliness_level') AS INT64) AS cleanliness_level,
+    JSON_EXTRACT(cleaned_response, '$.description') AS description,
+    CAST (JSON_EXTRACT(cleaned_response, '$.is_bus_stop') AS BOOL) AS is_bus_stop,
+    CAST (JSON_EXTRACT(cleaned_response, '$.number_of_people') AS INT64) AS number_of_people
+FROM llm_response;
 
 -- For production implementation a loop of re-processing failed predictions would be necessary.
 -- In this demo we use the fail-fast approach
@@ -41,6 +52,21 @@ BEGIN
         FROM new_reports WHERE model_response_status != '' LIMIT 1);
   IF NOT first_failure IS NULL THEN
     RAISE USING MESSAGE=first_failure;
+  END IF;
+END;
+
+BEGIN
+  DECLARE first_failure_to_extract_attributes DEFAULT
+    (SELECT CONCAT("Failed to produce requested JSON for at least one file: ", "URI: ", uri,
+    ", response:", raw_response,
+    ", cleaned response: ", COALESCE(cleaned_response, "FAILED TO CLEAN RESPONSE"))
+        FROM new_reports WHERE
+          cleanliness_level IS NULL OR
+          description IS NULL OR
+          is_bus_stop IS NULL OR
+          number_of_people IS NULL);
+  IF NOT first_failure_to_extract_attributes IS NULL THEN
+    RAISE USING MESSAGE=first_failure_to_extract_attributes;
   END IF;
 END;
 
@@ -79,6 +105,11 @@ END;
 INSERT INTO `${multimodal_embeddings_table}` (report_id, model_used, embedding)
 SELECT report_id, '${multimodal_embeddings_model_id}', embedding FROM new_reports r, new_multimodal_embeddings e
   WHERE r.uri = e.uri;
+
+-- We can miss the files arrived between the cache refresh and the time new_process_time was set.
+-- It's also possible to set this time to the timestamp of the latest successfully processed image
+-- and not fail the whole transaction.
+SET new_process_time = (SELECT MAX(updated) FROM new_reports);
 
 -- Update the process time watermark
 UPDATE `${process_watermark_table}`
