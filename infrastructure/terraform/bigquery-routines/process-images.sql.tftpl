@@ -106,6 +106,20 @@ INSERT INTO `${multimodal_embeddings_table}` (report_id, model_used, embedding)
 SELECT report_id, '${multimodal_embeddings_model_id}', embedding FROM new_reports r, new_multimodal_embeddings e
   WHERE r.uri = e.uri;
 
+-- Generate text embeddings
+INSERT INTO `${text_embeddings_table}` (report_id, model_used, embedding, model_response_status)
+SELECT
+    report_id,
+    '${text_embeddings_model_id}',
+    ml_generate_embedding_result AS embedding,
+    ml_generate_embedding_status AS status
+FROM
+    ML.GENERATE_EMBEDDING(
+            MODEL `${text_embeddings_model}`,
+            (SELECT report_id, description as content FROM new_reports WHERE description IS NOT NULL),
+            STRUCT('SEMANTIC_SIMILARITY' as task_type)
+        );
+
 -- We can miss the files arrived between the cache refresh and the time new_process_time was set.
 -- It's also possible to set this time to the timestamp of the latest successfully processed image
 -- and not fail the whole transaction.
