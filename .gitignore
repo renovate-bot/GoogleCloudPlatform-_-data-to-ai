@@ -55,8 +55,8 @@ crash.*.log
 # Language Specific
 # ...
 /infrastructure/terraform/.terraform.lock.hcl
-/infrastructure/functions/image-process-invoker/package-lock.json
-/infrastructure/functions/image-process-invoker/node_modules/
-/infrastructure/functions/image-process-invoker/image-process-invoker.zip
-/infrastructure/functions/image-process-invoker/index.js
+/infrastructure/terraform/functions/image-process-invoker/package-lock.json
+/infrastructure/terraform/functions/image-process-invoker/node_modules/
+/infrastructure/terraform/functions/image-process-invoker/image-process-invoker.zip
+/infrastructure/terraform/functions/image-process-invoker/index.js
 /.cloud-env.sh

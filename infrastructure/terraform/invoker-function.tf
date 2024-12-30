@@ -1,8 +1,8 @@
 # Instead of generating the JavaScript code from the template we can use environment variables
 # to provide the function with the 3 parameters required to process images.
 resource "local_file" "invoker-function-index-js" {
-  filename = "${path.module}/../functions/image-process-invoker/index.js"
-  content  = templatefile("${path.module}/../functions/image-process-invoker/index.js.tftpl",
+  filename = "${path.module}/functions/image-process-invoker/index.js"
+  content  = templatefile("${path.module}/functions/image-process-invoker/index.js.tftpl",
     {
       project_id        = var.project_id,
       dataset_id        = local.dataset_id,
@@ -13,9 +13,9 @@ resource "local_file" "invoker-function-index-js" {
 data "archive_file" "invoker_function_archive" {
   depends_on  = [local_file.invoker-function-index-js]
   type        = "zip"
-  output_path = "${path.module}/../functions/image-process-invoker/image-process-invoker.zip"
+  output_path = "${path.module}/functions/image-process-invoker/image-process-invoker.zip"
   excludes    = ["*.tftpl", "*.zip", "package-lock.json", "node_modules", ".DS_Store"]
-  source_dir  = "${path.module}/../functions/image-process-invoker"
+  source_dir  = "${path.module}/functions/image-process-invoker"
 }
 
 locals {
