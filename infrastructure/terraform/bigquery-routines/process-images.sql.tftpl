@@ -64,7 +64,8 @@ BEGIN
           cleanliness_level IS NULL OR
           description IS NULL OR
           is_bus_stop IS NULL OR
-          number_of_people IS NULL);
+          number_of_people IS NULL
+        LIMIT 1);
   IF NOT first_failure_to_extract_attributes IS NULL THEN
     RAISE USING MESSAGE=first_failure_to_extract_attributes;
   END IF;
