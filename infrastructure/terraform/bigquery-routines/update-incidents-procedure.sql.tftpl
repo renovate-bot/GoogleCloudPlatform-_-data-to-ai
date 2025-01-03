@@ -22,7 +22,7 @@ USING (
     lr.bus_stop_id,
     -- Determine if an incident should be resolved based on cleanliness threshold
     CASE
-      WHEN lr.cleanliness_level >= 6 THEN TRUE
+      WHEN lr.cleanliness_level >= 2 THEN TRUE
       ELSE FALSE
     END AS should_resolve,
     i.incident_id,
