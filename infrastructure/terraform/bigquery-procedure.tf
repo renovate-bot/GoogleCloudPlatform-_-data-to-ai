@@ -52,6 +52,7 @@ resource "google_bigquery_routine" "process_images_procedure" {
     process_watermark_table           = "${local.fq_dataset_id}.${google_bigquery_table.process_watermark.table_id}"
     images_table                      = "${local.fq_dataset_id}.${google_bigquery_table.images.table_id}"
     reports_table                     = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
+    multimodal_model                  = "${local.fq_dataset_id}.${local.default_model_name}"
     text_embeddings_table             = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
     text_embeddings_model              = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
     multimodal_embeddings_table       = "${local.fq_dataset_id}.${google_bigquery_table.multimodal_embeddings.table_id}"
