@@ -66,15 +66,15 @@ resource "google_bigquery_routine" "process_images_procedure" {
   })
 }
 
-resource "google_bigquery_routine" "semantic_text_search_tvf" {
+resource "google_bigquery_routine" "semantic_search_text_embeddings_tvf" {
   dataset_id   = local.dataset_id
-  routine_id   = "semantic_text_search"
+  routine_id   = "semantic_search_text_embeddings"
   routine_type = "TABLE_VALUED_FUNCTION"
   language     = "SQL"
 
   depends_on = [time_sleep.wait_for_text_embedding_model_creation]
 
-  definition_body = templatefile("${path.module}/bigquery-routines/semantic-text-search.sql.tftpl", {
+  definition_body = templatefile("${path.module}/bigquery-routines/semantic-search-text-embeddings.sql.tftpl", {
     text_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.text_embeddings.table_id}"
     text_embedding_model  = "${local.fq_dataset_id}.${local.text_embedding_model_name}"
     reports_table         = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
@@ -87,15 +87,15 @@ resource "google_bigquery_routine" "semantic_text_search_tvf" {
   }
 }
 
-resource "google_bigquery_routine" "semantic_multimodal_search_tvf" {
+resource "google_bigquery_routine" "semantic_search_multimodal_embeddings_tvf" {
   dataset_id   = local.dataset_id
-  routine_id   = "semantic_multimodal_search"
+  routine_id   = "semantic_search_multimodal_embeddings"
   routine_type = "TABLE_VALUED_FUNCTION"
   language     = "SQL"
 
   depends_on = [time_sleep.wait_for_multimodal_embedding_model_creation]
 
-  definition_body = templatefile("${path.module}/bigquery-routines/semantic-multimodal-search.sql.tftpl", {
+  definition_body = templatefile("${path.module}/bigquery-routines/semantic-search-multimodal-embeddings.sql.tftpl", {
     multimodal_embeddings_table = "${local.fq_dataset_id}.${google_bigquery_table.multimodal_embeddings.table_id}"
     multimodal_embedding_model  = "${local.fq_dataset_id}.${local.multimodal_embedding_model_name}"
     reports_table               = "${local.fq_dataset_id}.${google_bigquery_table.reports.table_id}"
