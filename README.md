@@ -211,8 +211,13 @@ function:
 ```sql
 SELECT *
     FROM `bus_stop_image_processing.reports`
-    WHERE SEARCH(description, "broken glass")
+    WHERE SEARCH(description, "`broken glass`")
+        # Combining text search with filtering on extracted attributes
+        AND cleanliness_level < 5
 ```
+
+Notice that the SEARCH function supports sophisticated search query rules. Here we only showed
+a simple search for two adjacent words, "broken" and "glass".
 
 ### Semantic search using text embeddings
 
@@ -270,7 +275,7 @@ semantic_text_search AS (
 full_text_search AS (
     SELECT uri
         FROM `bus_stop_image_processing.reports`
-        WHERE SEARCH(description, "broken glass")),
+        WHERE SEARCH(description, "`broken glass`")),
 combined_results AS (
     SELECT uri, multimodal_coefficent/distance  AS weight FROM semantic_multimodal_search
         UNION ALL
