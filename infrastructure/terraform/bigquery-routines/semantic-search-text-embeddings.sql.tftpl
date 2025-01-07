@@ -1,21 +1,23 @@
-WITH search_results AS (SELECT
+WITH search_results AS (
+    SELECT
       base.report_id,
-      distance
+      distance,
+      RANK() OVER (ORDER BY distance ASC) as rank  -- Calculate rank based on distance
     FROM
       VECTOR_SEARCH(
         TABLE `${text_embeddings_table}`,
         'embedding',
         (
           SELECT * FROM ML.GENERATE_EMBEDDING(
-          MODEL `${text_embedding_model}`,
-          (
-            SELECT search_terms AS content
-          ),
-          STRUCT('SEMANTIC_SIMILARITY' as task_type))
+            MODEL `${text_embedding_model}`,
+            ( SELECT search_terms AS content ),
+            STRUCT('SEMANTIC_SIMILARITY' as task_type)
+          )
         ),
         top_k => ${max_number_of_results},
         distance_type => 'COSINE'
       )
 )
-SELECT r.*, sr.distance FROM `${reports_table}` r, search_results sr
- WHERE r.report_id = sr.report_id
+SELECT r.*, sr.distance, sr.rank
+FROM `${reports_table}` r, search_results sr
+WHERE r.report_id = sr.report_id
