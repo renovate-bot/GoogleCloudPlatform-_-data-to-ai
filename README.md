@@ -284,25 +284,25 @@ Here's a simplified SQL implementation of RRF, combining semantic search results
 ```sql
 DECLARE rrf_ranking_alpha DEFAULT 0.5;
 
-WITH RankedResultsSet1 AS (
-    SELECT 
-        uri, distance, rank
-    FROM `bus_stop_image_processing.semantic_search_multimodal_embeddings`("a bus stop with broken glass")
+WITH multimodal_embeddings_search AS (
+  SELECT
+    uri, distance, rank
+  FROM `bus_stop_image_processing.semantic_search_multimodal_embeddings`("a bus stop with broken glass")
 ),
-RankedResultsSet2 AS (
-    SELECT 
-        uri, distance, rank
-    FROM `bus_stop_image_processing.semantic_search_text_embeddings`("a bus stop with broken glass")
-)
+     text_embeddings_search AS (
+       SELECT
+         uri, distance, rank
+       FROM `bus_stop_image_processing.semantic_search_text_embeddings`("a bus stop with broken glass")
+     )
 -- Calculate RRF scores
 SELECT
-    -- Use uri from either result set
-    COALESCE(r1.uri, r2.uri) AS uri,
-    -- Weighted RRF score handling missing ranks
-    (rrf_ranking_alpha * COALESCE(1.0 / r1.rank, 0)) +
-    ((1-rrf_ranking_alpha) * COALESCE(1.0 / r2.rank, 0)) AS rrf_score,
-FROM RankedResultsSet1 r1
-FULL OUTER JOIN RankedResultsSet2 r2 ON r1.uri = r2.uri -- Use OUTER JOIN to include results from both sets
+  -- Use uri from either result set
+  COALESCE(r1.uri, r2.uri) AS uri,
+  -- Weighted RRF score handling missing ranks
+  (rrf_ranking_alpha * COALESCE(1.0 / r1.rank, 0)) +
+  ((1-rrf_ranking_alpha) * COALESCE(1.0 / r2.rank, 0)) AS rrf_score,
+FROM multimodal_embeddings_search r1
+       FULL OUTER JOIN text_embeddings_search r2 ON r1.uri = r2.uri -- Use OUTER JOIN to include results from both sets
 ORDER BY rrf_score DESC;  -- Sort by RRF score
 ```
 
@@ -319,27 +319,27 @@ Here's a simplified SQL implementation, where keyword matching in treated as bin
 ```sql
 DECLARE boost_factor DEFAULT 0.2;
 
-WITH RankedResultsSet AS (
-    SELECT 
-        uri, distance, rank
-    FROM `bus_stop_image_processing.semantic_search_text_embeddings`("a bus stop with broken glass")
+WITH ranked_results AS (
+  SELECT
+    uri, distance, rank
+  FROM `bus_stop_image_processing.semantic_search_text_embeddings`("a bus stop with broken glass")
 ),
-KeywordResultsSet AS (
-    SELECT
-        uri, description
-    FROM `bus_stop_image_processing.reports`
-    WHERE SEARCH(description, "`broken glass`")
-)
+     keyword_results AS (
+       SELECT
+         uri, description
+       FROM `bus_stop_image_processing.reports`
+       WHERE SEARCH(description, "`broken glass`")
+     )
 -- Combine with keyword results and boost keyword matches
-SELECT 
-    r.uri,
-    (1.0 / r.rank) AS semantic_score,
-    -- Binary keyword match feature
-    CASE WHEN k.uri IS NOT NULL THEN 1 ELSE 0 END AS keyword_match,
-    -- Boost score for keyword matches
-    (1.0 / r.rank) + (CASE WHEN k.uri IS NOT NULL THEN boost_factor ELSE 0 END) AS boosted_score,
-FROM RankedResultsSet r
-LEFT JOIN KeywordResultsSet k ON r.uri = k.uri  -- Use LEFT JOIN to include all semantic results
+SELECT
+  r.uri,
+  (1.0 / r.rank) AS semantic_score,
+  -- Binary keyword match feature
+  CASE WHEN k.uri IS NOT NULL THEN 1 ELSE 0 END AS keyword_match,
+  -- Boost score for keyword matches
+  (1.0 / r.rank) + (CASE WHEN k.uri IS NOT NULL THEN boost_factor ELSE 0 END) AS boosted_score,
+FROM ranked_results r
+       LEFT JOIN ranked_results k ON r.uri = k.uri  -- Use LEFT JOIN to include all semantic results
 ORDER BY boosted_score DESC, r.rank ASC;  -- Sort by boosted score, then by semantic rank
 ```
 
