@@ -284,26 +284,28 @@ Here's a simplified SQL implementation of RRF, combining semantic search results
 ```sql
 DECLARE rrf_ranking_alpha DEFAULT 0.5;
 
-WITH RankedResultsSet1 AS (
-    SELECT 
-        uri, distance, rank
-    FROM `bus_stop_image_processing.semantic_search_multimodal_embeddings`("a bus stop with broken glass")
+WITH ranked_results_multimodal_embeddings AS (
+  SELECT
+    uri, distance, rank
+  FROM `bus_stop_image_processing.semantic_search_multimodal_embeddings`("a bus stop with broken glass")
 ),
-RankedResultsSet2 AS (
-    SELECT 
-        uri, distance, rank
-    FROM `bus_stop_image_processing.semantic_search_text_embeddings`("a bus stop with broken glass")
-)
+     ranked_results_text_embeddings AS (
+       SELECT
+         uri, distance, rank
+       FROM `bus_stop_image_processing.semantic_search_text_embeddings`("a bus stop with broken glass")
+     )
 -- Calculate RRF scores
 SELECT
-    -- Use uri from either result set
-    COALESCE(r1.uri, r2.uri) AS uri,
-    -- Weighted RRF score handling missing ranks
-    (rrf_ranking_alpha * COALESCE(1.0 / r1.rank, 0)) +
-    ((1-rrf_ranking_alpha) * COALESCE(1.0 / r2.rank, 0)) AS rrf_score,
-FROM RankedResultsSet1 r1
-FULL OUTER JOIN RankedResultsSet2 r2 ON r1.uri = r2.uri -- Use OUTER JOIN to include results from both sets
-ORDER BY rrf_score DESC;  -- Sort by RRF score
+  -- Use uri from either result set
+  COALESCE(r1.uri, r2.uri) AS uri,
+  -- Weighted RRF score handling missing ranks
+  (rrf_ranking_alpha * COALESCE(1.0 / r1.rank, 0)) +
+  ((1-rrf_ranking_alpha) * COALESCE(1.0 / r2.rank, 0)) AS rrf_score,
+FROM ranked_results_multimodal_embeddings r1
+-- Use OUTER JOIN to include results from both sets
+       FULL OUTER JOIN ranked_results_text_embeddings r2 ON r1.uri = r2.uri
+-- Sort by RRF score
+ORDER BY rrf_score DESC;  
 ```
 
 The query joins the two results sets based on image `uri`. It then calculates the reciprocal rank for each image in each result set, then calculates final RRF score by taking a weighted average of the scores. The weights are set to 0.5 for each result set, but that can be adjusted using the `rrf_ranking_alpha` variable based on which retrieval system you want to prioritize. The search terms used for each type of search can also be improved based on testing using a realistic set of images.
@@ -319,28 +321,30 @@ Here's a simplified SQL implementation, where keyword matching in treated as bin
 ```sql
 DECLARE boost_factor DEFAULT 0.2;
 
-WITH RankedResultsSet AS (
-    SELECT 
-        uri, distance, rank
-    FROM `bus_stop_image_processing.semantic_search_text_embeddings`("a bus stop with broken glass")
+WITH ranked_results_text_embeddings AS (
+  SELECT
+    uri, distance, rank
+  FROM `bus_stop_image_processing.semantic_search_text_embeddings`("a bus stop with broken glass")
 ),
-KeywordResultsSet AS (
-    SELECT
-        uri, description
-    FROM `bus_stop_image_processing.reports`
-    WHERE SEARCH(description, "`broken glass`")
-)
+     keyword_search_results AS (
+       SELECT
+         uri, description
+       FROM `bus_stop_image_processing.reports`
+       WHERE SEARCH(description, "`broken glass`")
+     )
 -- Combine with keyword results and boost keyword matches
-SELECT 
-    r.uri,
-    (1.0 / r.rank) AS semantic_score,
-    -- Binary keyword match feature
-    CASE WHEN k.uri IS NOT NULL THEN 1 ELSE 0 END AS keyword_match,
-    -- Boost score for keyword matches
-    (1.0 / r.rank) + (CASE WHEN k.uri IS NOT NULL THEN boost_factor ELSE 0 END) AS boosted_score,
-FROM RankedResultsSet r
-LEFT JOIN KeywordResultsSet k ON r.uri = k.uri  -- Use LEFT JOIN to include all semantic results
-ORDER BY boosted_score DESC, r.rank ASC;  -- Sort by boosted score, then by semantic rank
+SELECT
+  r.uri,
+  (1.0 / r.rank) AS semantic_score,
+  -- Binary keyword match feature
+  CASE WHEN k.uri IS NOT NULL THEN 1 ELSE 0 END AS keyword_match,
+  -- Boost score for keyword matches
+  (1.0 / r.rank) + (CASE WHEN k.uri IS NOT NULL THEN boost_factor ELSE 0 END) AS boosted_score,
+FROM ranked_results_text_embeddings r
+-- Use LEFT JOIN to include all semantic vector search results
+       LEFT JOIN keyword_search_results k ON r.uri = k.uri
+-- Sort by boosted score, then by semantic rank
+ORDER BY boosted_score DESC, r.rank ASC;
 ```
 
 The query joins the two results sets based on image `uri`. It adds a binary `keyword_match` column and boosts the score of semantic matches that also have a match in the keyword results set. You can tune the `boost_factor` variable to control the influence of the boolean match.
