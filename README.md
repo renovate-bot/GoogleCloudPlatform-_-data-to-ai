@@ -25,7 +25,7 @@ The images should be automatically analyzed and if the bus stop is found to be d
 is automatically created. The incident is considered to be resolved if a new image shows the bus stop
 to be in acceptable condition.
 
-[![Incident Detection & Resolution in Action](docs/video/thumbnail.jpeg)](docs/video/bus-stops-reel.mp4)
+![Incident Detection & Resolution in action](https://services.google.com/fh/files/misc/bus-stops-reel.gif)
 
 ## Implementation
 
