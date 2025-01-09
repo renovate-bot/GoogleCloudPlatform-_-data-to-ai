@@ -25,6 +25,8 @@ The images should be automatically analyzed and if the bus stop is found to be d
 is automatically created. The incident is considered to be resolved if a new image shows the bus stop
 to be in acceptable condition.
 
+![Incident Detection & Resolution in action](https://services.google.com/fh/files/misc/bus-stops-reel.gif)
+
 ## Implementation
 
 The code in this repo shows how images uploaded to Google Cloud Storage buckets can be
