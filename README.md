@@ -13,7 +13,7 @@ using multimodal GenAI capabilities of Google Cloud.
 * Full text search on the automatically generated description of the images
 * Vector search for images with similar attributes
 
-## Use Case
+## Use Cases
 
 Imagine a large city transportation agency which is trying to improve its passenger satisfaction. The
 agency would like to be notified if there are issues with cleanliness and safety of the
@@ -23,7 +23,15 @@ also provides a customer portal to allow uploading bus stop pictures by passenge
 
 The images should be automatically analyzed and if the bus stop is found to be dirty - an incident
 is automatically created. The incident is considered to be resolved if a new image shows the bus stop
-to be in acceptable condition.
+to be in acceptable condition. 
+
+The internal users of our transportation agency also needs to perform search and monitoring operations over the physical assets. We will use GenAI capabilities to enable semantic search over the images, helping the system users to discover the information they need using natural language.
+
+In our second use case, we want to make our dataset ready for search and analysis. The transportation agency commercial department want to verify that ads being paid for by our commercial customers are being displayed and that the condition of those bus stops aren't in a pressing need for care. For that, we will enrich our dataset with human and machine friendly information to make it more usable for those queries, where we can find bus stops with specific ads, and understand how many people are standing in those bus stops (impressions of ads) and generate reports for the condition of those bus stops.
+
+Our third use case, we are asked to generate estimations of number of passengers in our bus stops, in order to be better prepared for any large spikes or save costs when we predict lower number of passengers. We will use our input data to project estimations about expected number of riders, using weather data to estimate how number of passengers might change, given weather predictions. 
+
+
 
 ![Incident Detection & Resolution in action](https://services.google.com/fh/files/misc/bus-stops-reel.gif)
 
@@ -48,16 +56,15 @@ buckets. This is done to be able to run the implementations independently of eac
 
 ## Getting Started with the Notebooks
 
+By using the provided notebooks, you will create the following solution ![Architecture Diagram](docs/notebook-architecture.png)
+
 The following notebooks are provided:
 
-1. [Multimodal Analysis and Search of Bus Stops](./notebooks/multimodal_analysis_search.ipynb)
-notebook is a step-by-step walkthrough of the data processing workflow. This notebook is
-self-sufficient and can be run independently without needing any other components of this repository.
-2. [Evaluating Multimodal Image Search](./notebooks/multimodal_search_evaluation.ipynb)
-notebook is used to evaluate the retrieval quality of the image search implemented in the above notebook.
-It uses [DeepEval](https://docs.confident-ai.com/) LLM evaluation framework and Gemini 1.5 Pro as LLM
-judge. It includes a set of test cases to evaluate different semantic search results across different
-retrieval metrics. This notebook requires completion of the [Multimodal Analysis and Search of Bus Stops](./notebooks/multimodal_analysis_search.ipynb) notebook.
+1. [CleanSight (Part 1): Multimodal Analysis and Search of Bus Stops](./notebooks/part_1_multimodal_analysis_search.ipynb)
+This notebook showcases the power of multimodal Gemini models and BigQuery vector search for a real-world image analysis use case. This notebook is
+self-sufficient and can be run independently without needing any other components of this repository. 
+2. [CleanSight (Part 2): Large-scale multimodal understanding](./notebooks/part_2_large_scale_understanding.ipynb) This notebook is the second part of the CleanSight example application. Whereas Part 1 represents an operational system that ingests and processes bus stop images as they arrive, this notebook focuses on the large-scale AI capabilities available once a large number of images has been collected. This notebook relies on the resources created in the previous (part 1) notebook.
+3. [CleanSight (Part 3): Predictions of bus stop related events](./notebooks/part_3_time_series_forecasting.ipynb) This notebook is the third part of the CleanSight example application. In this notebook, we'll explore how advanced time-series predictions can be combined with data produced using multimodal analysis. __Note__ This notebook requires access to the `WeatherNext` dataset. See the notebook for more details.`
 
 You can run the notebooks in a Vertex AI Workbench instance, in Google Colab Enterprise, or directly
 in BigQuery Studio. It is assumed that you have a Google Cloud project with permissions to create a Cloud
