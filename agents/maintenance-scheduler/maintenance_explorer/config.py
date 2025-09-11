@@ -59,8 +59,7 @@ class Config(BaseSettings):
     CLOUD_LOCATION: str = Field(default="us-central1")
     AGENT_RESOURCE_NAME: str = Field(default="UNKNOWN")
     GENAI_USE_VERTEXAI: str = Field(default="1")
-    AGENTSPACE_APP_ID: str = Field(default="None",
-                                   description="Agentspace app id. Only used when deployment to Agentspace is needed.")
+    AGENTSPACE_APP_ID: str = Field(default="None", description="Agentspace app id. Only used when deployment to Agentspace is needed.")
     API_KEY: str | None = Field(default="")
     mock_tools: bool = Field(
         default=False,
@@ -68,13 +67,10 @@ class Config(BaseSettings):
     show_thoughts: bool = Field(
         default=True,
         description="Show model's thoughts")
-    use_mcp_toolbox: bool = Field(
-        default=False,
-        description="Indicates if the MCP server should be used instead of the local tools"
-    )
-    mcp_toolbox_uri: str | None = Field(default="",
-                                        description="URI of the MCP server"
-                                        )
+    #Conversational analtyics API configuration 
+    CA_API_AGENT_ID: str = Field(default="data_agent_ca_bigquery")
+    BQ_DATASET: str = Field(default="bus_stop_image_processing")  
+
     def get_bigquery_data_project(self) -> str:
         return self.CLOUD_BIGQUERY_DATA_PROJECT or self.CLOUD_PROJECT
 

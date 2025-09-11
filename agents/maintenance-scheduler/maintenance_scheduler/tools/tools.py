@@ -317,12 +317,14 @@ def is_time_on_weekend(day: int, month: int, year: int) -> bool:
     is_weekend = date.weekday() > 4
     logger.info("Is day a weekend: %s %s %s: %s", year, month, day, is_weekend)
 
+
     return {"is_weekend": is_weekend}
 
 
 get_unresolved_incidents_tool = get_unresolved_incidents
 get_expected_number_of_passengers_tool = get_expected_number_of_passengers
 schedule_maintenance_tool = schedule_maintenance
+
 if config.use_mcp_toolbox:
     if not config.mcp_toolbox_uri:
         raise ValueError(
