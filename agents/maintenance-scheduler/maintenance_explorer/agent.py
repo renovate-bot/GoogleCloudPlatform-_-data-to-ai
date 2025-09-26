@@ -24,9 +24,15 @@ from .tools import tools
 from google.cloud import geminidataanalytics
 from google.adk.planners import BuiltInPlanner
 from google.genai.types import ThinkingConfig
-from .tools.tools import ask_lakehouse,get_image_from_bucket
+from .tools.tools import ask_lakehouse,get_image_from_bucket,analytics_chart_tool,get_external_url_image
 from .config import Config
 from .prompts import GLOBAL_INSTRUCTION, INSTRUCTION
+from google.adk.tools import FunctionTool
+from google.genai import types
+import io
+from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+from toolbox_core import ToolboxSyncClient
 
 import logging
 logger = logging.getLogger(__name__)
@@ -142,6 +148,20 @@ def setup_before_agent_call(callback_context: CallbackContext) -> None:
         create_ca_conversation(agent_name,parent_agent_name,conversation_name,conversation_id)
 
 
+tools = [ask_lakehouse,
+            get_image_from_bucket,
+            analytics_chart_tool,
+            get_external_url_image,]
+
+if configs.use_mcp_toolbox:
+    if not configs.mcp_toolbox_uri:
+        raise ValueError(
+            "mcp_toolbox_uri must be set when use_mcp_toolbox is set to True.")
+    toolbox = ToolboxSyncClient(configs.mcp_toolbox_uri)
+    # Load all the tools
+    toolbox_toolset = toolbox.load_toolset('forecast_passangers')
+    tools = tools + toolbox_toolset
+
 
 
 root_agent = Agent(
@@ -153,8 +173,7 @@ root_agent = Agent(
         thinking_config=ThinkingConfig(include_thoughts=configs.show_thoughts)),
  
     instruction= INSTRUCTION,
-    tools=[ ask_lakehouse,
-            get_image_from_bucket],
+    tools=tools,
     before_agent_callback=setup_before_agent_call,
     generate_content_config=types.GenerateContentConfig(temperature=0.01),
 )
